@@ -1,9 +1,10 @@
 
 
-pub trait Actor {
+pub trait Actor<T> {
 
-    fn receive(&self, message: Message) -> Result<(), String>;
-    fn send(&self, message: Message) -> Result<(), String>;
-    fn spawn(&self) -> Result<(), String>;
+    fn send<T>(&self, message: T) -> Result<(), String>;
+    fn receive<T>(&self, message: T) -> Result<(), String>;
+    fn spawn<T>(t: T) -> Result<(), String>;
+
 
 }
