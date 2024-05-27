@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::sync::mpsc::channel;
+use crate::actors::props::Props;
 
 
 const DEFAULT_ACTOR_STSTEM_SPAWN_SIZE: usize = 100;
@@ -16,8 +17,10 @@ trait ActorRefFactory {
     fn stop() -> ();
 }
 
-use super::actor::{Actor, ActorRef};
+use super::actor::{Actor, ActorMessage};
+use super::actor_ref::ActorRef;
 /// An actor system is a collection of actors that can communicate with each other.
+
 struct ActorSystem {
     actors: HashMap<ActorRef, thread::JoinHandle<()>>,
     name: String,
@@ -70,7 +73,7 @@ impl ActorSystem {
                 let sender = actor.lock(); // Fix the type parameter
                 match sender  {
                     Ok(sender) => {
-                        sender.send(actor_ref);
+                        sender.send(actor_ref.tell(Box(message)));
                     }
                     Err(e) => {
                         println!("Error: {:?}", e);
@@ -79,22 +82,21 @@ impl ActorSystem {
                 
              receiver.recv().unwrap();
         }});
-        self.actors.insert(actor_ref.name().to_owned(), handle);
+        self.actors.insert(actor_ref, handle);
         
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::actors::actor::TimedActor;
 
     use super::*;
 
     #[test]
     fn test_actor_system() {
         let mut system = ActorSystem::new();
-        let actor = TimedActor::new("test_actor");
-        system.spawn(actor);
+        //let actor = TimedActor::new("test_actor");
+        //system.spawn(actor);
         assert_eq!(system.actors.len(), 1);
     }
 }

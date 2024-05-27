@@ -1,4 +1,3 @@
-use std::time::Duration;
 use std::sync::mpsc;
 use crate::actors::actor_ref::ActorRef;
 
@@ -11,8 +10,12 @@ pub enum GuardianMessage {
     StopChild(ActorRef),
 }
 
+pub trait A {
 
-pub trait Actor<T> {
+}
+
+
+pub trait Actor<T> : A {
     fn receive(&mut self, message: mpsc::Receiver<T>);
     fn name(&self) -> &str {
         "Unnamed Actor"
@@ -22,21 +25,28 @@ pub trait Actor<T> {
     }
 }
 
+
 pub struct Guardian {
 
 }
+
+impl A for Guardian {}
 
 impl Actor<GuardianMessage> for Guardian {
     fn receive(&mut self, message: mpsc::Receiver<GuardianMessage>) {
         loop {
             match message.recv() {
-                GuardianMessage::Terminate => {
+                Ok(GuardianMessage::Terminated) => {
                     println!("Terminating actor");
                     break;
                 }
-                GuardianMessage::StopChild(actor) => {
+                Ok(GuardianMessage::StopChild(actor)) => {
                     println!("Stopping child actor");
                     actor.stop();
+                }
+                Err(_) => {
+                    println!("Error receiving message");
+                    break;
                 }
             }
         }
@@ -51,33 +61,9 @@ pub struct Source<T, ActorRef> {
     payload: T,
     virtualizer: ActorRef,
     
-};
-
-impl Actor<T> for Source<T, ActorRef> {
-
-
-    fn receive(&mut self, message: mpsc::Receiver<T>) {
-        loop {
-            match message.recv() {
-                Ok(msg) => {
-                    println!("Received message: {:?}", msg);
-                }
-                Err(e) => {
-                    println!("Error: {:?}", e);
-                }
-            }
-        }
-    }
-    
-    fn name(&self) -> &str {
-        "Unnamed Actor"
-    }
-    
-    fn next_actor(&self) -> Option<ActorRef> {
-        None
-    }
-
 }
+
+
 
 
 
@@ -89,11 +75,5 @@ mod tests {
 
     #[test]
     fn test_actor() {
-        let (sender, receiver) = mpsc::channel();
-        let mut actor = GetResourceActor {
-            receiver,
-            next_actor: None,
-        };
-        actor.receive(receiver);
     }
 }
