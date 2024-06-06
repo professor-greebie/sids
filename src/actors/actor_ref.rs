@@ -32,11 +32,8 @@ impl ActorRef for GuardianActorRef {
         let _send = std::thread::spawn(move ||  {
             snd.send(msg).unwrap();
         });
-        let _receive = std::thread::spawn(move ||  {
-            let _ = actor.receive(rec);
-        });
+        let _receive = actor.receive(rec);
         _send.join().unwrap();
-        _receive.join().unwrap();
         Ok(())
     }
 }

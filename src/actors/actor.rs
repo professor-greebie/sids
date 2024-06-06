@@ -16,7 +16,7 @@ pub struct Guardian {}
 impl Actor for Guardian {
     type T = GuardianMessage;
     fn receive(&self, message: mpsc::Receiver<Self::T>) -> () {
-        std::thread::spawn(move || loop {
+        loop {
             match message.recv() {
                 Ok(GuardianMessage::Terminated) => {
                     println!("Terminating actor");
@@ -28,7 +28,7 @@ impl Actor for Guardian {
                 }
             }
 
-        });
+        }
 }}
 
 
