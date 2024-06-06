@@ -1,87 +1,35 @@
-use std::time::Duration;
+use crate::actors::messages::{ActorMessage, GuardianMessage};
 use std::sync::mpsc;
-use crate::actors::actor_ref::ActorRef;
 
-pub trait ActorMessage {
+pub trait Actor {
+    type T: ActorMessage;
 
-}
-
-pub enum GuardianMessage {
-    Terminated,
-    StopChild(ActorRef),
-}
-
-
-pub trait Actor<T> {
-    fn receive(&mut self, message: mpsc::Receiver<T>);
+    fn receive(&self, message: mpsc::Receiver<Self::T>);
     fn name(&self) -> &str {
         "Unnamed Actor"
     }
-    fn next_actor(&self) -> Option<ActorRef> {
-        None
-    }
 }
 
-pub struct Guardian {
+#[derive(Debug, Clone)]
+pub struct Guardian {}
 
-}
-
-impl Actor<GuardianMessage> for Guardian {
-    fn receive(&mut self, message: mpsc::Receiver<GuardianMessage>) {
-        loop {
+impl Actor for Guardian {
+    type T = GuardianMessage;
+    fn receive(&self, message: mpsc::Receiver<Self::T>) -> () {
+        std::thread::spawn(move || loop {
             match message.recv() {
-                GuardianMessage::Terminate => {
+                Ok(GuardianMessage::Terminated) => {
                     println!("Terminating actor");
                     break;
                 }
-                GuardianMessage::StopChild(actor) => {
-                    println!("Stopping child actor");
-                    actor.stop();
-                }
-            }
-        }
-    }
-
-}
-
-
-
-pub struct Source<T, ActorRef> {
-    next: Option<T>,
-    payload: T,
-    virtualizer: ActorRef,
-    
-};
-
-impl Actor<T> for Source<T, ActorRef> {
-
-
-    fn receive(&mut self, message: mpsc::Receiver<T>) {
-        loop {
-            match message.recv() {
-                Ok(msg) => {
-                    println!("Received message: {:?}", msg);
-                }
                 Err(e) => {
-                    println!("Error: {:?}", e);
+                    println!("Error receiving message: {:?}", e);
+                    break;
                 }
             }
-        }
-    }
-    
-    fn name(&self) -> &str {
-        "Unnamed Actor"
-    }
-    
-    fn next_actor(&self) -> Option<ActorRef> {
-        None
-    }
 
-}
-
-
-
-
+        });
+}}
 
 #[cfg(test)]
 mod tests {
@@ -90,10 +38,8 @@ mod tests {
     #[test]
     fn test_actor() {
         let (sender, receiver) = mpsc::channel();
-        let mut actor = GetResourceActor {
-            receiver,
-            next_actor: None,
-        };
+        sender.send(GuardianMessage::Terminated).unwrap();
+        let actor = Guardian {};
         actor.receive(receiver);
     }
 }
