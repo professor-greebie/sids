@@ -1,15 +1,24 @@
 
-pub trait ActorMessage {
+
+pub trait Message {
+
 }
 
-pub enum GuardianMessage {
-    Terminated,
-    GetNextId {
+pub enum ActorMessage {
+    Terminate,
+    GetNextId  {
         responder: tokio::sync::oneshot::Sender<u64>,
-    }
+    },
 }
 
-impl ActorMessage for GuardianMessage {
+pub enum GetActorMessage {
+    Terminate,
+    GetURI  {
+        uri: String,
+        location: String,
+    },
+}
 
-
+impl Message for GetActorMessage {
+    
 }

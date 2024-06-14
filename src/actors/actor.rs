@@ -1,55 +1,77 @@
-use crate::actors::messages::{ActorMessage, GuardianMessage};
 use tokio::sync::mpsc;
 
-pub trait Actor {
-    type T: ActorMessage;
-    fn new(receiver: mpsc::Receiver<Self::T> ) -> Self;
-    fn receive(&mut self, message: Self::T);
-    fn name(&self) -> &str {
-        "Unnamed Actor"
-    }
+use super::messages::{ActorMessage, GetActorMessage};
+
+
+pub trait ActorType {
+    type M;
+
+    fn new(receiver: mpsc::Receiver<Box<Self::M>>) -> Self;
+    async fn run(&mut self);
 }
 
-
-pub struct Guardian {
-    pub receiver: mpsc::Receiver<GuardianMessage>,
-    next_id: u64,
-    name: String
+pub struct Actor {
+    pub receiver: mpsc::Receiver<Box<ActorMessage>> ,
 }
 
-impl Actor for Guardian {
-    type T = GuardianMessage;
-    fn new (receiver: mpsc::Receiver<GuardianMessage>) -> Self {
-        Guardian {
-            receiver,
-            next_id: 0,
-            name: "Guardian".to_string()
+impl ActorType for Actor {
+    type M = ActorMessage;
+
+    fn new(receiver: mpsc::Receiver<Box<Self::M>>) -> Actor {
+        Actor {
+            receiver: receiver,
         }
     }
 
-    fn receive(&mut self, message: Self::T) {
+    async fn run(&mut self) {
+        while let Some(message) = self.receiver.recv().await {
+            self.receive(message);
+        }
+    }
+    
+}
+
+impl Actor {
+
+    
+    
+    pub fn receive(&mut self, message: Box<ActorMessage>) {
         match message {
-            GuardianMessage::Terminated => {
-                println!("{} received a termination message", self.name);
-            }
-            GuardianMessage::GetNextId { responder } => {
-                self.next_id += 1;
-                let _ = responder.send(self.next_id);
-            }
+            _ => {}
         }
     }
+    
+}
+
+pub struct GetActor {
+    pub receiver: mpsc::Receiver<Box<GetActorMessage>> ,
 }
 
 
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_actor() {
-        let (sender, receiver) = mpsc::channel(1);
-        sender.send(GuardianMessage::Terminated);
-        let actor = Guardian::new(receiver);
+impl ActorType for GetActor {
+    type M = GetActorMessage;
+    fn new(receiver: mpsc::Receiver<Box<Self::M>>) -> GetActor {
+        GetActor {
+            receiver: receiver,
+        }
     }
+    async fn run(&mut self) {
+        while let Some(message) = self.receiver.recv().await {
+            self.receive(*message);
+        }
+    }
+
+}
+
+impl GetActor {
+    
+
+    pub fn receive(&mut self, message: GetActorMessage) {
+        match message {
+            GetActorMessage::Terminate => {}
+            GetActorMessage::GetURI { uri, location } => {}
+        }
+
+    }
+
 }

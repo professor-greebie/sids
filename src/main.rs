@@ -1,7 +1,14 @@
 use std::io::Error;
 
-fn main() -> Result<(), Error> {
+use sids::actors::actor_system::ActorSystem;
 
-    println!("Hello, world!");
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+
+    let actor_system = ActorSystem::new();
+
     Ok(())
+
+    
 }

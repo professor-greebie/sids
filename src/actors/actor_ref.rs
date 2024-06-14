@@ -1,54 +1,41 @@
-use crate::actors::messages::ActorMessage;
+use crate::actors::actor::Actor;
+use super::actor::{ActorType, GetActor};
+use super::messages::{ActorMessage, GetActorMessage};
 
-use tokio::sync::{oneshot, mpsc};
-use crate::actors::actor::{Actor, Guardian};
-use crate::actors::messages::GuardianMessage;
-
-pub trait ActorRef {
-    type T: Actor + 'static;
-    type M: ActorMessage;
-    fn new() -> Self;
-    async fn tell(&self) -> u64;
-    // possibly include an actor path reference to see where the message is coming from
+pub struct ActorRef {
+    sender: tokio::sync::mpsc::Sender<Box<ActorMessage>>,
 }
 
-#[derive(Clone)]
-struct GuardianActorRef {
-    sender: tokio::sync::mpsc::Sender<GuardianMessage>,
-}
+impl ActorRef {
 
-async fn run_the_guardian(mut actor: Guardian) {
-    while let Some(message) = actor.receiver.recv().await {
-        actor.receive(message);
+    pub fn new(mut actor: Actor, snd: tokio::sync::mpsc::Sender<Box<ActorMessage>>) -> Self {
+        tokio::spawn(async move {
+            actor.run().await;
+        });
+        Self{ sender: snd }
+    }
+
+    pub async fn send(&mut self, message: Box<ActorMessage>) {
+        self.sender.send(message).await.unwrap();
     }
 }
 
-impl ActorRef for GuardianActorRef {
-    type T = Guardian;
-    type M = GuardianMessage;
-    fn new() -> Self {
-        let (snd, rec) = tokio::sync::mpsc::channel(1);
-        let actor = Guardian::new(rec);
-        tokio::spawn(run_the_guardian(actor));
-        
-        Self { sender: snd }
+pub struct GetActorRef {
+    sender: tokio::sync::mpsc::Sender<Box<GetActorMessage>>,
+}
+
+impl GetActorRef {
+
+    pub fn new(mut actor: GetActor, snd: tokio::sync::mpsc::Sender<Box<GetActorMessage>>) -> Self {
+        tokio::spawn(async move {
+            actor.run().await;
+        });
+        Self{ sender: snd }
     }
-    async fn tell(&self) -> u64 {
-        let (sender, receiver) = oneshot::channel();
-        let msg = GuardianMessage::GetNextId { responder: sender, };
-        
-        let _ = self.sender.send(msg).await;
-        receiver.await.expect("Actor is dead")
+
+    pub async fn send(&mut self, message: Box<GetActorMessage>) {
+        self.sender.send(message).await.unwrap();
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn test_actor_ref() {
-        let guardian = GuardianActorRef::new();
-        let test = guardian.tell();
-    }
-}
