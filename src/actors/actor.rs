@@ -1,77 +1,94 @@
 use tokio::sync::mpsc;
 
-use super::messages::{ActorMessage, GetActorMessage};
+use super::messages::{ActorMessage, GetActorMessage, Message};
 
 
 pub trait ActorType {
-    type M;
-
-    fn new(receiver: mpsc::Receiver<Box<Self::M>>) -> Self;
-    async fn run(&mut self);
+    fn receive(&self, message : Message);
 }
 
-pub struct Actor {
-    pub receiver: mpsc::Receiver<Box<ActorMessage>> ,
+pub enum Actor {
+    Guardian(Guardian),
+    GetActor(GetActor),
 }
 
-impl ActorType for Actor {
-    type M = ActorMessage;
+pub enum SelectActor {
+    Guardian,
+    GetActor,
+}
 
-    fn new(receiver: mpsc::Receiver<Box<Self::M>>) -> Actor {
-        Actor {
+pub struct Guardian {
+    pub receiver: mpsc::Receiver<Message> ,
+}
+
+impl ActorType for Guardian {
+    fn receive(&self, message: Message) {
+        match message {
+            Message::ActorMessage(ActorMessage::Terminate) => {
+                println!("Actor terminated");
+            },
+            Message::ActorMessage(ActorMessage::GetNextId { responder }) => {
+                responder.send(1).unwrap();
+            },
+            _ => {}
+        }
+    
+    }
+
+    
+}
+
+impl Guardian {
+
+    pub fn new(receiver: mpsc::Receiver<Message>) -> Guardian {
+        Guardian {
             receiver: receiver,
         }
     }
 
-    async fn run(&mut self) {
+    pub async fn run(&mut self) {
         while let Some(message) = self.receiver.recv().await {
-            self.receive(message);
+            Self::receive(self, message);
         }
     }
-    
-}
 
-impl Actor {
-
-    
-    
-    pub fn receive(&mut self, message: Box<ActorMessage>) {
-        match message {
-            _ => {}
-        }
-    }
     
 }
 
 pub struct GetActor {
-    pub receiver: mpsc::Receiver<Box<GetActorMessage>> ,
+    pub receiver: mpsc::Receiver<Message> ,
 }
 
+impl ActorType for GetActor  {
+    
 
-impl ActorType for GetActor {
-    type M = GetActorMessage;
-    fn new(receiver: mpsc::Receiver<Box<Self::M>>) -> GetActor {
-        GetActor {
-            receiver: receiver,
+    fn receive(&self, message: Message) {
+        match message  {
+            Message::GetActorMessage(GetActorMessage::Terminate) => {
+                println!("GetActor terminated");
+            },
+            Message::GetActorMessage(GetActorMessage::GetURI { uri, location }) => {
+                println!("URI: {}, Location: {}", uri, location);
+            },
+            _ => {}
         }
-    }
-    async fn run(&mut self) {
-        while let Some(message) = self.receiver.recv().await {
-            self.receive(*message);
-        }
+
     }
 
 }
 
 impl GetActor {
-    
-
-    pub fn receive(&mut self, message: GetActorMessage) {
-        match message {
-            GetActorMessage::Terminate => {}
-            GetActorMessage::GetURI { uri, location } => {}
+    pub fn new(receiver: mpsc::Receiver<Message>) -> GetActor {
+        GetActor {
+            receiver: receiver,
         }
-
+    }
+    pub async fn run(&mut self) {
+        while let Some(message) = self.receiver.recv().await {
+            self.receive(message);
+        }
     }
 
 }
+
+

@@ -1,41 +1,39 @@
 use crate::actors::actor::Actor;
-use super::actor::{ActorType, GetActor};
-use super::messages::{ActorMessage, GetActorMessage};
+use super::actor::{ActorType, GetActor, Guardian};
+use super::messages::{ActorMessage, GetActorMessage, Message};
+
+
+trait ActorRefTrait {
+    fn send(&mut self, message: Message);
+}
 
 pub struct ActorRef {
-    sender: tokio::sync::mpsc::Sender<Box<ActorMessage>>,
+    sender: tokio::sync::mpsc::Sender<Message>,
 }
 
 impl ActorRef {
 
-    pub fn new(mut actor: Actor, snd: tokio::sync::mpsc::Sender<Box<ActorMessage>>) -> Self {
-        tokio::spawn(async move {
-            actor.run().await;
-        });
+    pub fn new(actor: Actor, snd: tokio::sync::mpsc::Sender<Message>) -> Self {
+        match actor {
+            Actor::Guardian(mut guardian) => {
+                tokio::spawn(async move {
+                    guardian.run().await;
+                });
+            },
+            Actor::GetActor(mut get_actor) => {
+                tokio::spawn(async move {
+                    get_actor.run().await;
+                });
+            },
+            _ => {}
+        }
         Self{ sender: snd }
     }
 
-    pub async fn send(&mut self, message: Box<ActorMessage>) {
+    pub async fn send(&mut self, message: Message) {
         self.sender.send(message).await.unwrap();
     }
 }
 
-pub struct GetActorRef {
-    sender: tokio::sync::mpsc::Sender<Box<GetActorMessage>>,
-}
-
-impl GetActorRef {
-
-    pub fn new(mut actor: GetActor, snd: tokio::sync::mpsc::Sender<Box<GetActorMessage>>) -> Self {
-        tokio::spawn(async move {
-            actor.run().await;
-        });
-        Self{ sender: snd }
-    }
-
-    pub async fn send(&mut self, message: Box<GetActorMessage>) {
-        self.sender.send(message).await.unwrap();
-    }
-}
 
 

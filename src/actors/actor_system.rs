@@ -1,16 +1,11 @@
 use crate::actors::actor::Actor;
-use crate::actors::actor_ref::{ActorRef, GetActorRef};
-use super::actor::ActorType;
-
-enum ActorSystemTypes {
-    ActorRef(ActorRef), 
-    GetActorRef(ActorRef)
-}
+use crate::actors::actor_ref::ActorRef;
+use super::actor::{ActorType, GetActor, Guardian, SelectActor};
 
 // An actor system is a collection of actors that can communicate with each other.
 pub struct ActorSystem {
-    // The actor system has a collection of actors that can communicate with each other.
-    _value: Option<ActorSystemTypes>,
+    // The current actor reference.
+    _value: Option<ActorRef>,
     _actors: Option<Box<ActorSystem>>,
 }
 
@@ -21,27 +16,41 @@ impl ActorSystem
 
     pub fn new () -> Self {
         let (snd, rec) = tokio::sync::mpsc::channel(1);
-        let actor = Actor::new(rec);
+        let actor = Actor::Guardian(Guardian::new(rec));
         let actor_ref = ActorRef::new(actor, snd);
-        ActorSystem { _value: Some(ActorSystemTypes::ActorRef(actor_ref)), _actors: None }
+        ActorSystem { _value: Some(actor_ref), _actors: None }
     }
 
-    pub fn spawn_actor(&mut self) {
-        
+    pub fn spawn_actor(&mut self, actor_select: SelectActor) {
         let (snd, rec) = tokio::sync::mpsc::channel(1);
-        let actor = ActorType::new(rec);
-        let actor_ref = ActorRef::new(actor, snd);
-        self._actors = Some(Box::new(ActorSystem { _value: Some(ActorSystemTypes::ActorRef(actor_ref)), _actors: None }));
+        match actor_select {
+            SelectActor::GetActor => {
+                let actor = Actor::GetActor(GetActor::new(rec));
+                let actor_ref = ActorRef::new(actor, snd);
+                self._value = Some(actor_ref);
+            },
+            _ => {}
+        }
+        
+    }
+
+    pub fn next_actor(&self) -> Option<&Box<ActorSystem>> {
+        self._actors.as_ref()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::actors::actor::{self, GetActor};
+
     use super::*;
 
     #[tokio::test]
     async fn test_actor_system() {
-        let actor_system = ActorSystem::new();
+        let mut actor_system = ActorSystem::new();
+         actor_system.spawn_actor(SelectActor::GetActor);
+        assert_eq!(actor_system.next_actor().is_some(), true);
         assert_eq!(actor_system._value.is_some(), true);
+        assert_eq!(actor_system._actors.is_some(), true);
     }
 }

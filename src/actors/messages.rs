@@ -1,6 +1,8 @@
 
 
-pub trait Message {
+pub enum Message {
+    ActorMessage(ActorMessage),
+    GetActorMessage(GetActorMessage),
 
 }
 
@@ -11,14 +13,11 @@ pub enum ActorMessage {
     },
 }
 
+
 pub enum GetActorMessage {
     Terminate,
     GetURI  {
         uri: String,
         location: String,
     },
-}
-
-impl Message for GetActorMessage {
-    
 }
