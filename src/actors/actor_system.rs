@@ -1,6 +1,6 @@
 use crate::actors::actor::Actor;
 use crate::actors::actor_ref::ActorRef;
-use super::actor::{ActorType, GetActor, Guardian, SelectActor};
+use super::actor::{GetActor, Guardian, SelectActor};
 
 // An actor system is a collection of actors that can communicate with each other.
 pub struct ActorSystem {
@@ -41,8 +41,6 @@ impl ActorSystem
 
 #[cfg(test)]
 mod tests {
-    use crate::actors::actor::{self, GetActor};
-
     use super::*;
 
     #[tokio::test]

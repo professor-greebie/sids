@@ -1,11 +1,6 @@
 use crate::actors::actor::Actor;
-use super::actor::{ActorType, GetActor, Guardian};
-use super::messages::{ActorMessage, GetActorMessage, Message};
+use super::messages::Message;
 
-
-trait ActorRefTrait {
-    fn send(&mut self, message: Message);
-}
 
 pub struct ActorRef {
     sender: tokio::sync::mpsc::Sender<Message>,
