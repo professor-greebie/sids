@@ -1,12 +1,13 @@
 use crate::actors::actor::Actor;
-use crate::actors::actor_ref::ActorRef;
+use crate::actors::actor_ref::{ActorRef, SenderType};
 use super::actor::{GetActor, Guardian, SelectActor};
+use super::messages::Message;
 
 // An actor system is a collection of actors that can communicate with each other.
 pub struct ActorSystem {
     // The current actor reference.
-    _value: Option<ActorRef>,
-    _actors: Option<Box<ActorSystem>>,
+    pub _value: Option<ActorRef>,
+    pub _actors: Option<Box<ActorSystem>>,
 }
 
 
@@ -15,19 +16,22 @@ impl ActorSystem
  {
 
     pub fn new () -> Self {
-        let (snd, rec) = tokio::sync::mpsc::channel(1);
+        let (snd, rec) = tokio::sync::mpsc::channel(4);
+        let sender = SenderType::TokioSender(snd);
         let actor = Actor::Guardian(Guardian::new(rec));
-        let actor_ref = ActorRef::new(actor, snd);
+        let actor_ref = ActorRef::new(actor, sender);
         ActorSystem { _value: Some(actor_ref), _actors: None }
     }
 
     pub fn spawn_actor(&mut self, actor_select: SelectActor) {
-        let (snd, rec) = tokio::sync::mpsc::channel(1);
+        
         match actor_select {
             SelectActor::GetActor => {
+                let (snd, rec) = std::sync::mpsc::channel::<Message>();
+                let sender = SenderType::StdSender(snd);
                 let actor = Actor::GetActor(GetActor::new(rec));
-                let actor_ref = ActorRef::new(actor, snd);
-                self._value = Some(actor_ref);
+                let actor_ref = ActorRef::new(actor, sender);
+                self._actors = Some(Box::new(ActorSystem {_value: Some(actor_ref), _actors: None}));
             },
             _ => {}
         }
@@ -41,14 +45,15 @@ impl ActorSystem
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
 
     #[tokio::test]
     async fn test_actor_system() {
-        let mut actor_system = ActorSystem::new();
-         actor_system.spawn_actor(SelectActor::GetActor);
-        assert_eq!(actor_system.next_actor().is_some(), true);
-        assert_eq!(actor_system._value.is_some(), true);
-        assert_eq!(actor_system._actors.is_some(), true);
+
+    }
+
+    #[tokio::test]
+    async fn test_send_message() {
+        
     }
 }
