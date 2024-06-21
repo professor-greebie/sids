@@ -1,6 +1,6 @@
 use crate::actors::actor::Actor;
 use crate::actors::actor_ref::{ActorRef, SenderType};
-use super::actor::{GetActor, Guardian, SelectActor};
+use super::actor::{GetActor, Guardian, KafkaProducerActor, SelectActor};
 use super::messages::Message;
 
 // An actor system is a collection of actors that can communicate with each other.
@@ -32,6 +32,14 @@ impl ActorSystem
                 let actor = Actor::GetActor(GetActor::new(rec));
                 let actor_ref = ActorRef::new(actor, sender);
                 self._actors = Some(Box::new(ActorSystem {_value: Some(actor_ref), _actors: None}));
+            },
+            SelectActor::KafkaProducerActor => {
+                let (snd, rec) = tokio::sync::mpsc::channel::<Message>(32);
+                let sender = SenderType::TokioSender(snd);
+                let actor = Actor::KafkaProducerActor(KafkaProducerActor::new(rec));
+                let actor_ref = ActorRef::new(actor, sender);
+                self._actors = Some(Box::new(ActorSystem {_value: Some(actor_ref), _actors: None}));
+
             },
             _ => {}
         }

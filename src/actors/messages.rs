@@ -42,6 +42,10 @@ pub enum KafkaProducerMessage {
     Produce {
         topic: String,
         message: String,
+    },
+    ProduceWithResponse {
+        topic: String,
+        message: String,
         responder: tokio::sync::oneshot::Sender<Message>,
     },
 }

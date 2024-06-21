@@ -1,4 +1,5 @@
 
+use kafka::producer::Record;
 use log::info;
 use tokio::sync::mpsc;
 use std::io::prelude::*;
@@ -24,12 +25,14 @@ pub trait SyncActorType {
 pub enum Actor {
     Guardian(Guardian),
     GetActor(GetActor),
+    KafkaProducerActor(KafkaProducerActor),
     NotAnActor,
 }
 
 pub enum SelectActor {
     Guardian,
     GetActor,
+    KafkaProducerActor,
 }
 
 pub struct Guardian {
@@ -117,7 +120,7 @@ impl GetActor {
     }
 }
 
-struct KafkaProducerActor {
+pub struct KafkaProducerActor {
     receiver: mpsc::Receiver<Message>,
 }
 
@@ -127,9 +130,10 @@ impl ActorType for KafkaProducerActor {
             Message::KafkaProducerMessage(KafkaProducerMessage::Terminate) => {
                 println!("Actor terminated");
             }
-            Message::KafkaProducerMessage(KafkaProducerMessage::Produce { topic, message, responder }) => {
+            Message::KafkaProducerMessage(KafkaProducerMessage::ProduceWithResponse { topic, message, responder }) => {
                 info!("Producing message to topic {}", topic);
-                let producer = kafka::producer::Producer::new(vec!["10.172.55.10:9092".to_string()]);
+                let mut producer = kafka::producer::Producer::from_hosts(vec!("localhost:29092".to_owned())).create().unwrap();
+                producer.send(&Record::from_value(topic.as_str(), message.as_bytes())).unwrap();
 
                 responder.send(Message::Response(Response::Success)).unwrap();
             }
@@ -140,4 +144,16 @@ impl ActorType for KafkaProducerActor {
     }
 
 
+}
+
+impl KafkaProducerActor {
+    pub fn new(receiver: mpsc::Receiver<Message>) -> KafkaProducerActor {
+        KafkaProducerActor { receiver: receiver }
+    }
+
+    pub async fn run(&mut self) {
+        while let Some(message) = self.receiver.recv().await {
+            self.receive(message).await.unwrap();
+        }
+    }
 }
