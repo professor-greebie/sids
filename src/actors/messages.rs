@@ -4,6 +4,7 @@
 pub enum Message {
     ActorMessage(ActorMessage),
     GetActorMessage(GetActorMessage),
+    KafkaProducerMessage(KafkaProducerMessage),
     Response(Response),
 
 }
@@ -31,5 +32,16 @@ pub enum GetActorMessage {
         uri: String,
         location: String, 
         responder: std::sync::mpsc::Sender<Message>,
+    },
+}
+
+#[derive(Debug)]
+
+pub enum KafkaProducerMessage {
+    Terminate,
+    Produce {
+        topic: String,
+        message: String,
+        responder: tokio::sync::oneshot::Sender<Message>,
     },
 }

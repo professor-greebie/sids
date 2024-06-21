@@ -8,6 +8,7 @@ use std::io::Error;
 
 use crate::actors::messages::Response;
 
+use super::messages::KafkaProducerMessage;
 use super::messages::{ActorMessage, GetActorMessage, Message};
 
 #[trait_variant::make(HttpService: Send)]
@@ -114,4 +115,29 @@ impl GetActor {
         file.write_all(body.as_bytes()).unwrap();
         Ok(())
     }
+}
+
+struct KafkaProducerActor {
+    receiver: mpsc::Receiver<Message>,
+}
+
+impl ActorType for KafkaProducerActor {
+    async fn receive(&self, message: Message) -> Result<(), Error>{
+        match message {
+            Message::KafkaProducerMessage(KafkaProducerMessage::Terminate) => {
+                println!("Actor terminated");
+            }
+            Message::KafkaProducerMessage(KafkaProducerMessage::Produce { topic, message, responder }) => {
+                info!("Producing message to topic {}", topic);
+                let producer = kafka::producer::Producer::new(vec!["10.172.55.10:9092".to_string()]);
+
+                responder.send(Message::Response(Response::Success)).unwrap();
+            }
+
+            _ => {}
+        }
+        Ok(())
+    }
+
+
 }

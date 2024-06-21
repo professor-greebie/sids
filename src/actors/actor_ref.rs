@@ -55,7 +55,7 @@ impl ActorRef {
         };
     }
 
-    pub fn get_uri_result(self, uri: String, location: String) -> () {
+    pub fn send_get_request(self, uri: String, location: String) -> () {
         let (snd, rec) = std::sync::mpsc::channel::<Message>();
         match self.sender {
             SenderType::TokioSender(_sender) => {
