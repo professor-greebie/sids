@@ -31,8 +31,8 @@ pub fn next_actor_system(actor_system: ActorSystem) -> ActorSystem {
     system
 }
 
-pub fn send_message(actor_system: ActorSystem, message: Message) {
-    actor_system.send_message(message);
+pub async fn send_message(actor_system: ActorSystem, message: Message) {
+    actor_system.send_message(message).await.unwrap();
 }
 
 pub fn send_get_request(actor_system: &ActorSystem, uri: String, location: String) {
