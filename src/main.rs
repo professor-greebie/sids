@@ -1,8 +1,11 @@
 use std::io::Error;
 
+use actors::actor::{next_actor_system, KafkaProducerMessage};
 use log::info;
-use sids::actors::{actor::SelectActor, actor_system::ActorSystem, messages::{KafkaProducerMessage, Message}};
 use env_logger::{Builder, Env};
+
+pub mod actors;
+use crate::actors::actor::{start_actor_system, spawn_kafka_producer_actor, send_message, Message};
 
 
 fn init_logger() {
@@ -16,19 +19,14 @@ fn init_logger() {
 async fn main() -> Result<(), Error> {
     init_logger();
 
-    let mut _actor_system = ActorSystem::new();
+    let mut _actor_system = start_actor_system();
     //_actor_system.spawn_actor(SelectActor::GetActor);
-    _actor_system.spawn_actor(SelectActor::KafkaProducerActor);
-    let _next_actor_system =_actor_system.next_actor().unwrap()._value.as_ref().unwrap();
+    spawn_kafka_producer_actor(&mut _actor_system);
+    let _next_actor_system = next_actor_system(_actor_system);
+    send_message(_next_actor_system, Message::KafkaProducerMessage(KafkaProducerMessage::Produce{topic: "junk".to_string(), message: "Hello".to_string() }));
     info!("Sending message to get actor reference");
-    let _ = _next_actor_system.clone().send(Message::KafkaProducerMessage(KafkaProducerMessage::Produce{
-        topic: "junk".to_string(),
-        message: "Goodbye".to_string()
-    })).await;
 
     Ok(())
-
-    
 }
 
 
