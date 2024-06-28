@@ -1,11 +1,12 @@
 use std::io::Error;
 
-use actors::actor::{next_actor_system, KafkaProducerMessage};
 use log::info;
 use env_logger::{Builder, Env};
 
 pub mod actors;
-use crate::actors::actor::{start_actor_system, spawn_kafka_producer_actor, send_message, Message};
+use crate::actors::messages::Message;
+use crate::actors::messages::KafkaProducerMessage;
+use crate::actors::actor::{start_actor_system, spawn_kafka_producer_actor, send_message, next_actor_system};
 
 
 fn init_logger() {

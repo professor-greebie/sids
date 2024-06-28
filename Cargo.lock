@@ -1691,6 +1691,7 @@ dependencies = [
  "openssl",
  "reqwest",
  "rust-animation",
+ "serde",
  "tokio",
  "trait-variant",
 ]

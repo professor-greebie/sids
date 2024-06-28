@@ -1,3 +1,5 @@
+use crate::actors::messages::{ActorMessage, CollectorMessage, KafkaProducerMessage, Message, Response};
+
 use kafka::producer::Record;
 use log::error;
 use log::info;
@@ -16,8 +18,8 @@ pub fn spawn_actor(actor_system: &mut ActorSystem) -> &ActorSystem {
     actor_system
 }
 
-pub fn spawn_get_actor(actor_system: &mut ActorSystem) -> &ActorSystem {
-    actor_system.spawn_actor(SelectActor::GetActor);
+pub fn spawn_collector(actor_system: &mut ActorSystem) -> &ActorSystem {
+    actor_system.spawn_actor(SelectActor::Collector);
     actor_system
 }
 
@@ -40,7 +42,7 @@ pub fn send_get_request(actor_system: &ActorSystem, uri: String, location: Strin
 }
 
 pub fn describe_actor_system(actor_system: &ActorSystem) {
-    log::info!("Actor system: {:?}", "hello");
+    log::info!(actor = "Actor System"; "hello");
 }
 
 // An actor system is a collection of actors that can communicate with each other.
@@ -90,11 +92,11 @@ impl ActorSystem {
 
     fn spawn_actor(&mut self, actor_select: SelectActor) {
         match actor_select {
-            SelectActor::GetActor => {
+            SelectActor::Collector => {
                 let (snd, rec) = std::sync::mpsc::channel::<Message>();
                 let sender = SenderType::StdSender(snd);
-                let get_actor = GetActor::new(rec);
-                let actor = Actor::GetActor(get_actor);
+                let collector = Collector::new(rec);
+                let actor = Actor::Collector(collector);
                 let actor_ref = ActorRef::new(actor, sender);
                 self._actors = Some(Box::new(ActorSystem {
                     _value: Some(actor_ref),
@@ -136,21 +138,21 @@ impl ActorRef {
     fn new(actor: Actor, snd: SenderType) -> Self {
         match actor {
             Actor::Guardian(guardian) => {
-                info!("Spawning guardian actor");
+                info!(actor = "Guardian"; "Spawning guardian actor");
                 tokio::spawn(async move {
                     let mut guardian = guardian;
                     guardian.run().await;
                 });
             }
-            Actor::GetActor(get_actor) => {
-                info!("Spawning get actor with std sender");
+            Actor::Collector(collector) => {
+                info!(actor = "Collector"; "Spawning get actor with std sender");
                 std::thread::spawn(move || {
-                    let mut get_actor = get_actor;
-                    get_actor.run();
+                    let mut collector = collector;
+                    collector.run();
                 });
             }
             Actor::KafkaProducerActor(kafka_actor) => {
-                info!("Spawning a Kafka Producing actor");
+                info!(actor = "Kafka Producer"; "Spawning a Kafka Producing actor");
                 tokio::spawn(async move {
                     let mut kafka_actor = kafka_actor;
                     kafka_actor.run().await;
@@ -167,7 +169,7 @@ impl ActorRef {
         match &self.sender {
             SenderType::TokioSender(sender) => match message {
                 Message::KafkaProducerMessage(KafkaProducerMessage::Produce { topic, message }) => {
-                    info!("Producing Kafka message");
+                    info!(actor = "Kafka Producer"; "Producing Kafka message");
                     let (snd, _rec) = tokio::sync::oneshot::channel();
                     let _ = sender
                         .send(Message::KafkaProducerMessage(
@@ -198,7 +200,7 @@ impl ActorRef {
             }
             SenderType::StdSender(sender) => {
                 let _ = sender
-                    .send(Message::GetActorMessage(GetActorMessage::GetURI {
+                    .send(Message::CollectorMessage(CollectorMessage::GetURI {
                         uri,
                         location,
                         responder: snd,
@@ -221,54 +223,7 @@ impl ActorRef {
     }
 }
 
-#[derive(Debug)]
-pub enum Message {
-    ActorMessage(ActorMessage),
-    GetActorMessage(GetActorMessage),
-    KafkaProducerMessage(KafkaProducerMessage),
-    Response(Response),
-}
 
-#[derive(Debug)]
-pub enum ActorMessage {
-    Terminate,
-    GetNextId {
-        responder: tokio::sync::oneshot::Sender<u64>,
-    },
-}
-
-#[derive(Debug)]
-
-pub enum Response {
-    Success,
-    Failure,
-}
-
-#[derive(Debug)]
-
-pub enum GetActorMessage {
-    Terminate,
-    GetURI {
-        uri: String,
-        location: String,
-        responder: std::sync::mpsc::Sender<Message>,
-    },
-}
-
-#[derive(Debug)]
-
-pub enum KafkaProducerMessage {
-    Terminate,
-    Produce {
-        topic: String,
-        message: String,
-    },
-    ProduceWithResponse {
-        topic: String,
-        message: String,
-        responder: tokio::sync::oneshot::Sender<Message>,
-    },
-}
 
 #[trait_variant::make(HttpService: Send)]
 
@@ -282,7 +237,7 @@ trait SyncActorType {
 
 enum Actor {
     Guardian(Guardian),
-    GetActor(GetActor),
+    Collector(Collector),
     KafkaProducerActor(KafkaProducerActor),
     NotAnActor,
 }
@@ -290,7 +245,7 @@ enum Actor {
 enum SelectActor {
     Guardian,
     LogActor,
-    GetActor,
+    Collector,
     KafkaProducerActor,
 }
 
@@ -344,23 +299,17 @@ impl Guardian {
     }
 }
 
-struct GetActor {
+struct Collector {
     receiver: std::sync::mpsc::Receiver<Message>,
 }
 
-impl GetActor {
-    // GetActor requires spawn blocking in order to get the response from the reqwest::blocking::get method.
-    fn new(receiver: std::sync::mpsc::Receiver<Message>) -> GetActor {
-        GetActor { receiver: receiver }
-    }
-
+impl SyncActorType for Collector {
     fn receive(&self, message: Message) -> Result<(), Error> {
-        info!("Received message");
         match message {
-            Message::GetActorMessage(GetActorMessage::Terminate) => {
-                println!("GetActor terminated");
+            Message::CollectorMessage(CollectorMessage::Terminate) => {
+                println!("Actor terminated");
             }
-            Message::GetActorMessage(GetActorMessage::GetURI {
+            Message::CollectorMessage(CollectorMessage::GetURI {
                 uri,
                 location,
                 responder,
@@ -370,12 +319,19 @@ impl GetActor {
                     .send(Message::Response(Response::Success))
                     .unwrap();
             }
-            _ => {
-                println!("No message received");
-            }
+            _ => {}
         }
         Ok(())
     }
+}
+
+impl Collector {
+    // Collector requires spawn blocking in order to get the response from the reqwest::blocking::get method.
+    fn new(receiver: std::sync::mpsc::Receiver<Message>) -> Collector {
+        info!(actor = "Get Actor"; "Creating Get Actor");
+        Collector { receiver: receiver }
+    }
+
     fn run(&mut self) {
         while let Ok(message) = self.receiver.recv() {
             self.receive(message).unwrap();
@@ -441,6 +397,7 @@ impl KafkaProducerActor {
     }
 
     async fn run(&mut self) {
+        info!(actor = "Kafka Producer"; "Running Kafka producer actor");
         while let Some(message) = self.receiver.recv().await {
             self.receive(message).await.unwrap();
         }
