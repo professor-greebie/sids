@@ -24,7 +24,7 @@ async fn main() -> Result<(), Error> {
     //_actor_system.spawn_actor(SelectActor::GetActor);
     spawn_kafka_producer_actor(&mut _actor_system);
     let _next_actor_system = next_actor_system(_actor_system);
-    send_message(_next_actor_system, Message::KafkaProducerMessage(KafkaProducerMessage::Produce{topic: "junk".to_string(), message: "Hello".to_string() })).await;
+    send_message(_next_actor_system, Message::KafkaProducerMessage(KafkaProducerMessage::Produce{topic: "junk".to_string(), message: "Is this working?".to_string() })).await;
     info!("Sending message to get actor reference");
 
     Ok(())

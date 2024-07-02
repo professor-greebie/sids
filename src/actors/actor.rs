@@ -49,6 +49,8 @@ pub fn describe_actor_system(actor_system: &ActorSystem) {
 #[derive(Clone)]
 pub struct ActorSystem {
     // The current actor reference.
+    _id: u32,
+    _type: SelectActor,
     _value: Option<ActorRef>,
     _actors: Option<Box<ActorSystem>>,
 }
@@ -60,6 +62,8 @@ impl ActorSystem {
         let actor = Actor::Guardian(Guardian::new(rec));
         let actor_ref = ActorRef::new(actor, sender);
         ActorSystem {
+            _id : 0,
+            _type: SelectActor::Guardian,
             _value: Some(actor_ref),
             _actors: None,
         }
@@ -99,6 +103,8 @@ impl ActorSystem {
                 let actor = Actor::Collector(collector);
                 let actor_ref = ActorRef::new(actor, sender);
                 self._actors = Some(Box::new(ActorSystem {
+                    _id : self._id + 1,
+                    _type: SelectActor::Collector,
                     _value: Some(actor_ref),
                     _actors: None,
                 }));
@@ -109,6 +115,8 @@ impl ActorSystem {
                 let actor = Actor::KafkaProducerActor(KafkaProducerActor::new(rec));
                 let actor_ref = ActorRef::new(actor, sender);
                 self._actors = Some(Box::new(ActorSystem {
+                    _id : self._id + 1,
+                    _type: SelectActor::KafkaProducerActor,
                     _value: Some(actor_ref),
                     _actors: None,
                 }));
@@ -242,11 +250,23 @@ enum Actor {
     NotAnActor,
 }
 
+#[derive(Clone)]
 enum SelectActor {
     Guardian,
     LogActor,
     Collector,
     KafkaProducerActor,
+}
+
+impl SelectActor {
+    pub fn get_actor_description(&self) -> String {
+        match self {
+            SelectActor::Guardian => "Guardian Actor".to_string(),
+            SelectActor::LogActor => "Log Actor".to_string(),
+            SelectActor::Collector => "Collector Actor".to_string(),
+            SelectActor::KafkaProducerActor => "Kafka Producer Actor".to_string(),
+        }
+    }
 }
 
 struct Guardian {
@@ -373,7 +393,7 @@ impl ActorType for KafkaProducerActor {
             }) => {
                 info!("Producing message to topic {}", topic);
                 let mut producer =
-                    kafka::producer::Producer::from_hosts(vec!["localhost:29092".to_owned()])
+                    kafka::producer::Producer::from_hosts(vec!["10.172.55.10:29092".to_owned()])
                         .create()
                         .unwrap();
                 producer
@@ -403,3 +423,26 @@ impl KafkaProducerActor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::oneshot;
+
+    #[tokio::test]
+    async fn test_actor_system() {
+        let mut actor_system = start_actor_system();
+        spawn_actor(&mut actor_system);
+        spawn_collector(&mut actor_system);
+        spawn_kafka_producer_actor(&mut actor_system);
+        let next_actor_system = next_actor_system(actor_system.clone());
+        send_message(next_actor_system, Message::KafkaProducerMessage(KafkaProducerMessage::Produce {
+            topic: "junk".to_string(),
+            message: "Hello".to_string(),
+        }))
+        .await;
+    }
+
+}
+
+
