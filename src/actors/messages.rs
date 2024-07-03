@@ -4,6 +4,7 @@ pub enum Message {
     CollectorMessage(CollectorMessage),
     KafkaProducerMessage(KafkaProducerMessage),
     Response(Response),
+    NoMessage
 }
 
 #[derive(Debug)]
