@@ -4,7 +4,8 @@ pub enum Message {
     CollectorMessage(CollectorMessage),
     KafkaProducerMessage(KafkaProducerMessage),
     Response(Response),
-    NoMessage
+    NoMessage,
+    Terminate
 }
 
 #[derive(Debug)]
@@ -26,6 +27,10 @@ pub enum Response {
 
 pub enum CollectorMessage {
     Terminate,
+    GetURITemplate {
+        uri: String,
+        location: String
+    },
     GetURI {
         uri: String,
         location: String,

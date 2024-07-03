@@ -35,12 +35,11 @@ impl BlockingActorRef {
     }
 
     pub(super) fn send(&mut self, message: &messages::Message) {
-        let (snd, rec) = std::sync::mpsc::channel::<messages::Message>();
+        let (snd, rec) = std::sync::mpsc::channel();
         match message {
-            messages::Message::CollectorMessage(messages::CollectorMessage::GetURI {
+            messages::Message::CollectorMessage(messages::CollectorMessage::GetURITemplate {
                 uri,
                 location,
-                responder,
             }) => {
                 info!(actor = "Collector"; "Getting URI");
                 let _ = self.sender.send(Message::CollectorMessage(
@@ -84,14 +83,14 @@ impl TokioActorRef {
                     let mut guardian = guardian;
                     guardian.run().await;
                 });
-            }
+            },
             actor::Actor::KafkaProducerActor(kafka_actor) => {
                 info!(actor = "Kafka Producer"; "Spawning a Kafka Producing actor");
                 tokio::spawn(async move {
                     let mut kafka_actor = kafka_actor;
                     kafka_actor.run().await;
                 });
-            }
+            },
             _ => {
                 error!("Actor not found");
             }
@@ -118,10 +117,47 @@ impl TokioActorRef {
                     ))
                     .await;
                 _rec.await.expect("Actor was killed before send.");
-            }
+            },
+            messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder }) => {
+                let (snd, _rec) = tokio::sync::oneshot::channel();
+                let _ = self.sender.send(messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: snd })).await;
+                _rec.await.expect("Actor was killed before send.");
+            },
+            messages::Message::Terminate => {
+                let _ = self.sender.send(messages::Message::Terminate).await;
+            },
             _ => {
                 let _ = self.sender.send(messages::Message::NoMessage).await;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::oneshot;
+
+    #[tokio::test]
+    async fn test_tokio_actor_ref() {
+        let (snd, rec) = tokio::sync::mpsc::channel::<Message>(10);
+        let (snd2, rec2) = tokio::sync::oneshot::channel::<u64>();
+        let actor = actor::Actor::Guardian(actor::Guardian::new(rec));
+        let mut actor_ref = TokioActorRef::new(actor, snd);
+        let message = messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: snd2 });
+        let _ = actor_ref.send(&message).await;
+    }
+
+    #[test]
+    fn test_blocking_actor_ref() {
+        let (snd, rec) = std::sync::mpsc::channel();
+        let actor = actor::Actor::Collector(actor::Collector::new(rec));
+        let mut actor_ref = BlockingActorRef::new(actor, snd);
+        let message = messages::Message::CollectorMessage(messages::CollectorMessage::GetURITemplate {
+            uri: "https://www.google.com".to_string(),
+            location: "tmp".to_string(),
+
+        });
+        actor_ref.send(&message);
     }
 }

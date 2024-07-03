@@ -104,7 +104,7 @@ impl ActorType for LogActor {
         match message {
             messages::Message::ActorMessage(messages::ActorMessage::Terminate) => {
                 println!("Actor terminated");
-            }
+            },
             messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder }) => {
                 responder.send(1).unwrap();
             }
