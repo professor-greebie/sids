@@ -3,9 +3,19 @@ pub enum Message {
     ActorMessage(ActorMessage),
     CollectorMessage(CollectorMessage),
     KafkaProducerMessage(KafkaProducerMessage),
+    CleaningActorMessage(CleaningActorMessage),
     Response(Response),
     NoMessage,
     Terminate
+}
+
+#[derive(Debug)]
+pub enum CleaningActorMessage {
+    Terminate,
+    Clean {
+        location: String,
+        responder: tokio::sync::oneshot::Sender<Message>,
+    },
 }
 
 #[derive(Debug)]
@@ -16,7 +26,7 @@ pub enum ActorMessage {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 
 pub enum Response {
     Success,

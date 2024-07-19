@@ -15,10 +15,12 @@ Non-blocking courriers use the Tokio library to handle sequencing and backpressu
 ```mermaid
 
 flowchart TD
+    ActorSystem["Actor System"]
     Guardian["Guardian"]
     Office1["Officer"]
     Office2["Officer"]
-    Guardian --> Office1 --> Office2
+    ActorSystem --> Guardian
+    Guardian --> Office1 & Office2
 
     Courier1A[/"Courrier"/]
     Courier1B[/"Courrier"/]
@@ -28,4 +30,11 @@ flowchart TD
 
 
 ```
+
+## Officer Structure
+
+Officers have two roles:
+
+1 - They can adapt the behavior of any actor, thereby becoming an actor themselves.
+2 - They can perform update actions that send messages to all courrier actors under their control.
 

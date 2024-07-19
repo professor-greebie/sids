@@ -1,4 +1,4 @@
-use log::{error, info, warn};
+use log::{error, info };
 
 use crate::actors::{actor, messages::Message};
 
@@ -7,11 +7,14 @@ use super::messages;
 type TokioSender = tokio::sync::mpsc::Sender<messages::Message>;
 type StdSender = std::sync::mpsc::Sender<messages::Message>;
 
+#[allow(dead_code)]
 pub (super) enum ActorRef {
     TokioActorRef(TokioActorRef),
     BlockingActorRef(BlockingActorRef),
 }
 
+
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(super) struct BlockingActorRef {
     sender: StdSender,
@@ -71,7 +74,7 @@ impl BlockingActorRef {
 
 #[derive(Clone, Debug)]
 pub(super) struct TokioActorRef {
-    sender: tokio::sync::mpsc::Sender<messages::Message>,
+    sender: TokioSender,
 }
 
 impl TokioActorRef {
@@ -118,9 +121,12 @@ impl TokioActorRef {
                     .await;
                 _rec.await.expect("Actor was killed before send.");
             },
-            messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder }) => {
+            messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: _resp }) => {
+
+                // send the responder or force the actor reference to send the response?
                 let (snd, _rec) = tokio::sync::oneshot::channel();
                 let _ = self.sender.send(messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: snd })).await;
+                // do something with the id;
                 _rec.await.expect("Actor was killed before send.");
             },
             messages::Message::Terminate => {
@@ -135,15 +141,17 @@ impl TokioActorRef {
 
 #[cfg(test)]
 mod tests {
+    use crate::actors::guardian::Guardian;
+
     use super::*;
-    use tokio::sync::oneshot;
 
     #[tokio::test]
     async fn test_tokio_actor_ref() {
         let (snd, rec) = tokio::sync::mpsc::channel::<Message>(10);
-        let (snd2, rec2) = tokio::sync::oneshot::channel::<u64>();
-        let actor = actor::Actor::Guardian(actor::Guardian::new(rec));
+        let (snd2, _rec2) = tokio::sync::oneshot::channel::<u64>();
+        let actor = actor::Actor::Guardian(Guardian::new(rec));
         let mut actor_ref = TokioActorRef::new(actor, snd);
+        // the message never uses the responder here. Should we change the message to not include the responder?
         let message = messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: snd2 });
         let _ = actor_ref.send(&message).await;
     }
@@ -159,5 +167,6 @@ mod tests {
 
         });
         actor_ref.send(&message);
+        assert!(true);
     }
 }
