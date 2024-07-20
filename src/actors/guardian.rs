@@ -7,6 +7,8 @@ use super::{actor::{self, ActorType}, actor_ref::{self, BlockingActorRef, TokioA
 
 pub trait OfficerFactory {
     fn create_officer(&mut self, officer_type: SelectActor) -> Result<(), Error>;
+    fn remove_officer(&mut self, officer_id: u32) -> Result<(), Error>;
+    fn add_courrier(&mut self, officer_id: u32, courrier_type: SelectActor) -> Result<(), Error>;
 }
 
 
@@ -32,7 +34,7 @@ impl ActorType for Guardian {
 
 impl OfficerFactory for Guardian {
      fn create_officer(&mut self, officer_type: SelectActor) -> Result<(), Error> {
-        let (snd, rec) = tokio::sync::mpsc::channel::<messages::Message>(10);
+        let (snd, rec) = tokio::sync::mpsc::channel::<messages::Message>(super::SIDS_DEFAULT_BUFFER_SIZE);
         let (blocking_snd, blocking_rec) = std::sync::mpsc::channel::<messages::Message>();
         match officer_type {
             SelectActor::Guardian => Err(Error::new(ErrorKind::InvalidInput, "Cannot create guardian officer outside of ActorSystem.")),
@@ -60,6 +62,21 @@ impl OfficerFactory for Guardian {
             SelectActor::KafkaProducerActor => Ok(()),
             SelectActor::LogActor => Ok(()),
         }
+    }
+
+    fn remove_officer(&mut self, officer_id: u32) -> Result<(), Error> {
+        for (index, officer) in self.officers.iter().enumerate() {
+            if officer._id == officer_id {
+                self.officers.remove(index);
+                return Ok(());
+            }
+        }
+        Err(Error::new(ErrorKind::NotFound, "Officer not found."))
+    }
+
+    fn add_courrier(&mut self, officer_id: u32, courrier_type: SelectActor) -> Result<(), Error> {
+        Err(Error::new(ErrorKind::InvalidInput, "Not implemented."))
+        
     }
 }
 

@@ -5,6 +5,9 @@ pub mod actor_system;
 pub mod messages;
 pub mod guardian;
 
+
+static SIDS_DEFAULT_BUFFER_SIZE: usize = 100;
+
 mod emmissary_system {
 
     use crate::actors::actor_system::ActorSystem;

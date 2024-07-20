@@ -1,3 +1,5 @@
+use super::officer::SelectActor;
+
 #[derive(Debug)]
 pub enum Message {
     ActorMessage(ActorMessage),
@@ -7,6 +9,23 @@ pub enum Message {
     Response(Response),
     NoMessage,
     Terminate
+}
+
+pub enum GuardianMessage {
+    Terminate, 
+    CreateOfficer {
+        officer_type: SelectActor,
+        responder: tokio::sync::oneshot::Sender<Message>,
+    },
+    RemoveOfficer {
+        officer_id: u32,
+        responder: tokio::sync::oneshot::Sender<Message>,
+    },
+    AddCourrier {
+        officer_id: u32,
+        courrier_type: SelectActor,
+        responder: tokio::sync::oneshot::Sender<Message>,
+    },
 }
 
 #[derive(Debug)]
