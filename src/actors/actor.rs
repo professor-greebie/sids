@@ -2,6 +2,7 @@ use crate::actors::messages;
 
 use kafka::producer::Record;
 use log::info;
+use mockall::automock;
 use std::io::prelude::*;
 use std::io::Error;
 use tokio::sync::mpsc;
@@ -153,9 +154,23 @@ impl CleaningActor {
     }
 }
 
+
+
+
 pub (super) struct KafkaProducerActor {
     receiver: mpsc::Receiver<messages::Message>,
+    broker_host: String,
+    broker_port: String,
 }
+
+impl Default for KafkaProducerActor {
+    fn default() -> Self {
+        KafkaProducerActor {
+            receiver: mpsc::channel(1).1,
+            broker_host: "localhost".to_owned(),
+            broker_port: "29092".to_owned(),}
+        }
+    }
 
 impl ActorType for KafkaProducerActor {
     async fn receive(&self, message: messages::Message) -> Result<(), Error> {
@@ -169,8 +184,9 @@ impl ActorType for KafkaProducerActor {
                 responder,
             }) => {
                 info!("Producing message to topic {}", topic);
+                let broker_string = format!("{}:{}", self.broker_host, self.broker_port);
                 let mut producer =
-                    kafka::producer::Producer::from_hosts(vec!["10.172.55.10:29092".to_owned()])
+                    kafka::producer::Producer::from_hosts(vec![broker_string.to_owned()])
                         .create()
                         .unwrap();
                 producer
@@ -189,8 +205,8 @@ impl ActorType for KafkaProducerActor {
 }
 
 impl KafkaProducerActor {
-    pub (super) fn new(receiver: mpsc::Receiver<messages::Message>) -> KafkaProducerActor {
-        KafkaProducerActor { receiver: receiver }
+    pub (super) fn new(receiver: mpsc::Receiver<messages::Message>, host: Option<String>, port: Option<String>) -> KafkaProducerActor {
+        KafkaProducerActor { receiver: receiver, broker_host: host.unwrap_or("localhost".to_string()), broker_port: port.unwrap_or("29092".to_string()) }
     }
 
     pub(super) async fn run(&mut self) {

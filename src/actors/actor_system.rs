@@ -1,4 +1,4 @@
-use super::{guardian::Guardian, messages::Message};
+use super::{actor_ref::TokioActorRef, guardian::Guardian, messages::Message};
 use log::info;
 
 
@@ -11,15 +11,22 @@ use log::info;
     /// 
     /// # Example
     /// ```rust
-    ///
-    /// let mut actor_system = ActorSystem::new();
-    /// actor_system.start_system().await; 
-    /// actor_system.dispatch(Message.ActorMessage(ActorMessage::GetNextId { responder: tx })).await;
-    /// actor_system.dispatch(Message.Terminate).await;
+    /// use sids::actors::actor_system::ActorSystem;
+    /// use sids::actors::messages::{Message, ActorMessage};
+    /// 
+    /// pub async fn run_system() {
+    /// 
+    ///     let (tx, _rx) = tokio::sync::oneshot::channel();
+
+    ///     let mut actor_system = ActorSystem::new();
+    ///     actor_system.start_system().await; 
+    ///     actor_system.dispatch(Message::ActorMessage(ActorMessage::GetNextId { responder: tx })).await;
+    ///     actor_system.dispatch(Message::Terminate).await;
+    /// }
+    /// 
     /// ```
 pub struct ActorSystem {
-    guardian : Guardian,
-    sender: tokio::sync::mpsc::Sender<Message>,
+    guardian : TokioActorRef,
 }
 
 
@@ -31,20 +38,25 @@ impl ActorSystem {
     pub fn new() -> Self {
         let (snd, rec) = tokio::sync::mpsc::channel(super::SIDS_DEFAULT_BUFFER_SIZE);
         let actor = Guardian::new(rec);
+        let actor_ref = TokioActorRef::new(super::actor::Actor::Guardian(actor), snd);
+
         ActorSystem {
-            guardian: actor,
-            sender: snd,
+            guardian: actor_ref,
         }
     }
 
     pub async fn start_system(&mut self) {
-        self.guardian.run().await;
+
+        //TODO: Ready the guardian actor with a message to start the system.
+        //self.guardian.run().await;
     }
 
     pub async fn dispatch(&mut self, message: Message) {
         info!("Dispatching message to actor system");
-        self.sender.send(message).await.unwrap();
+        self.guardian.send(&message).await;
     }
+
+    
 
 }
 
@@ -66,6 +78,8 @@ mod tests {
         // message responder is never used in the message. Should we change the message to not include the responder?
         let _message = messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: tx });
         actor_system.start_system().await;
+        actor_system.dispatch(_message).await;
+        assert!(true);
 
 
         //actor_system.dispatch(&message).await;

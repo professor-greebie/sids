@@ -1,6 +1,7 @@
 
 use std::{io::ErrorKind, result::Result};
 use std::io::Error;
+use log::info;
 use tokio::sync::mpsc;
 
 use super::{actor::{self, ActorType}, actor_ref::{self, BlockingActorRef, TokioActorRef}, messages, officer::{Officer, SelectActor}};
@@ -21,7 +22,8 @@ impl ActorType for Guardian {
     async fn receive(&self, message: messages::Message) -> Result<(), Error> {
         match message {
             messages::Message::ActorMessage(messages::ActorMessage::Terminate) => {
-                println!("Actor terminated");
+                // TODO: Terminate all officers and their courriers.
+                info!("Guardian Actor terminated");
             }
             messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder }) => {
                 responder.send(1).unwrap();
@@ -42,7 +44,7 @@ impl OfficerFactory for Guardian {
                 let collector_officer = Officer {
                     _id: 1,
                     _type: SelectActor::Collector,
-                    actor: actor_ref::ActorRef::BlockingActorRef(BlockingActorRef::new(actor::Actor::Collector(actor::Collector::new(blocking_rec)), blocking_snd)),
+                    actor: actor_ref::ActorRef::BlockingActorRef(BlockingActorRef::new(actor::Actor::Collector(actor::Collector::new(blocking_rec)), blocking_snd).unwrap()),
                     courriers: Vec::new(),
                 };
                 self.officers.push(collector_officer);
@@ -103,7 +105,12 @@ mod tests {
         let mut guardian = Guardian::new(rx);
         //guardian.run().await;
         guardian.create_officer(SelectActor::Collector).expect("Failed to create officer.");
-        assert!(guardian.officers.len() == 1);
+        guardian.create_officer(SelectActor::CleaningActor).expect("Failed to create officer.");
+        guardian.create_officer(SelectActor::KafkaProducerActor).expect("Failed to create officer.");
+        guardian.create_officer(SelectActor::LogActor).expect("Failed to create officer.");
+        assert!(guardian.officers.len() == 2);
+        guardian.remove_officer(1).expect("Failed to remove officer.");
+
         guardian.receive(messages::Message::Terminate).await.expect("Failed to terminate guardian.");
         guardian.create_officer(SelectActor::Guardian).expect_err("Cannot create guardian officer outside of ActorSystem.");
 

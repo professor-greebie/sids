@@ -1,3 +1,5 @@
+use std::io::Error;
+
 use log::{error, info };
 
 use crate::actors::{actor, messages::Message};
@@ -21,20 +23,22 @@ pub(super) struct BlockingActorRef {
 }
 
 impl BlockingActorRef {
-    pub(super) fn new(actor: actor::Actor, sender: StdSender) -> Self {
+    pub(super) fn new(actor: actor::Actor, sender: StdSender) -> Result<Self, Error> {
         match actor {
             actor::Actor::Collector(collector) => {
-                info!(actor = "Collector"; "Spawning collector actor");
+                info!(actor = "Collector"; "Spawning collector actor.");
                 std::thread::spawn(move || {
                     let mut collector = collector;
                     collector.run();
                 });
             }
             _ => {
-                error!("Actor not found");
+                error!("Actor not found.");
+                return Err(Error::new(std::io::ErrorKind::InvalidInput, "Actor not found."));
             }
         }
-        Self { sender }
+        
+        Ok(Self { sender })
     }
 
     pub(super) fn send(&mut self, message: &messages::Message) {
@@ -143,7 +147,13 @@ impl TokioActorRef {
 mod tests {
     use crate::actors::guardian::Guardian;
 
+
+    
+
+
     use super::*;
+
+
 
     #[tokio::test]
     async fn test_tokio_actor_ref() {
@@ -154,19 +164,32 @@ mod tests {
         // the message never uses the responder here. Should we change the message to not include the responder?
         let message = messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: snd2 });
         let _ = actor_ref.send(&message).await;
+        let no_message = messages::Message::NoMessage;
+        let _ = actor_ref.send(&no_message).await;
+        assert!(true);
     }
+
 
     #[test]
     fn test_blocking_actor_ref() {
         let (snd, rec) = std::sync::mpsc::channel();
         let actor = actor::Actor::Collector(actor::Collector::new(rec));
-        let mut actor_ref = BlockingActorRef::new(actor, snd);
+        let mut actor_ref = BlockingActorRef::new(actor, snd).unwrap();
         let message = messages::Message::CollectorMessage(messages::CollectorMessage::GetURITemplate {
             uri: "https://www.google.com".to_string(),
             location: "tmp".to_string(),
-
         });
         actor_ref.send(&message);
         assert!(true);
+        let message = messages::Message::NoMessage;
+        let _ = actor_ref.send(&message);
+
+    }
+
+    #[test]
+    fn test_blocking_actor_ref_error() {
+        let (snd, rec) = std::sync::mpsc::channel();
+        let actor = actor::Actor::NotAnActor;
+        assert!(BlockingActorRef::new(actor, snd).is_err());
     }
 }
