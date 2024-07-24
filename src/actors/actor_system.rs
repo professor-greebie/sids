@@ -1,5 +1,8 @@
-use super::{actor_ref::TokioActorRef, guardian::Guardian, messages::Message};
+use crate::actors::{actor_ref::ActorRef, messages::RefType};
+
+use super::{actor_ref::{GuardianActorRef, TokioActorRef}, guardian::Guardian, messages::{GuardianMessage, Message}};
 use log::info;
+
 
 
 
@@ -26,7 +29,7 @@ use log::info;
     /// 
     /// ```
 pub struct ActorSystem {
-    guardian : TokioActorRef,
+    guardian : GuardianActorRef,
 }
 
 
@@ -37,8 +40,8 @@ impl ActorSystem {
     /// The guardian will be dormant until start_system is called in the ActorSystem.
     pub fn new() -> Self {
         let (snd, rec) = tokio::sync::mpsc::channel(super::SIDS_DEFAULT_BUFFER_SIZE);
-        let actor = Guardian::new(rec);
-        let actor_ref = TokioActorRef::new(super::actor::Actor::Guardian(actor), snd);
+        let guardian = Guardian::new(rec);
+        let actor_ref = GuardianActorRef::new(guardian, snd);
 
         ActorSystem {
             guardian: actor_ref,
@@ -53,7 +56,8 @@ impl ActorSystem {
 
     pub async fn dispatch(&mut self, message: Message) {
         info!("Dispatching message to actor system");
-        self.guardian.send(&message).await;
+        let msg = GuardianMessage::Dispatch { officer_id: 1, ref_type: RefType::Tokio, message: message };
+        self.guardian.send(&msg).await;
     }
 
     
@@ -74,9 +78,10 @@ mod tests {
     #[allow(dead_code)]
     async fn test_actor_system_is_not_headless_when_started() {
         let mut actor_system = ActorSystem::new();
-        let (tx, _rx) = oneshot::channel();
+        //let (tx, _rx) = oneshot::channel<InternalMessage>();
         // message responder is never used in the message. Should we change the message to not include the responder?
-        let _message = messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: tx });
+        let _message = messages::Message::GetId;
+
         actor_system.start_system().await;
         actor_system.dispatch(_message).await;
         assert!(true);

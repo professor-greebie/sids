@@ -40,7 +40,7 @@ mod emmissary_system {
         actor_system
     }
     #[allow(dead_code)]
-    pub async fn send_message(_actor_system: &ActorSystem, _message: messages::Message) {
+    pub async fn send_message(_actor_system: &ActorSystem, _message: messages::InternalMessage) {
     
     }
     #[allow(dead_code)]

@@ -2,6 +2,7 @@ use super::actor_ref;
 use super::actor_ref::ActorRef;
 use super::messages;
 
+#[derive(Debug, Clone, Copy)]
 pub enum SelectActor {
     Guardian,
     LogActor,
@@ -18,7 +19,7 @@ pub (super) struct Officer {
 
 impl Officer{
 
-    pub async fn send(&mut self, message: &messages::Message) {
+    pub async fn send(&mut self, message: &messages::InternalMessage) {
         match self.actor {
             actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {
                 blocking_actor_ref.send(message);
@@ -39,13 +40,13 @@ impl Officer{
         //self.courriers.retain(|a| a != &actor);
     }
 
-    pub async fn notify(&mut self, message: &messages::Message) -> Result<(), std::io::Error> {
+    pub async fn notify(&mut self, message: &messages::InternalMessage) -> Result<(), std::io::Error> {
         self.notify_blocking_courriers(message);
         self.notify_tokio_courriers(message).await;
         Ok(())
     }
 
-    pub fn notify_blocking_courriers(&mut self, message: &messages::Message) {
+    pub fn notify_blocking_courriers(&mut self, message: &messages::InternalMessage) {
         for courier in self.courriers.iter_mut() {
             match courier {
                 actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {
@@ -56,7 +57,7 @@ impl Officer{
         }
     }
 
-    pub async fn notify_tokio_courriers(&mut self, message: &messages::Message) {
+    pub async fn notify_tokio_courriers(&mut self, message: &messages::InternalMessage) {
         for courier in self.courriers.iter_mut() {
             match courier {
                 actor_ref::ActorRef::TokioActorRef(ref mut tokio_actor_ref) => {
@@ -89,7 +90,7 @@ mod tests {
         let actor_ref = actor_ref::ActorRef::TokioActorRef(actor_ref::TokioActorRef::new(Actor::CleaningActor(CleaningActor::new(rx2)), _tx2));
         officer.subscribe(actor_ref);
         assert!(officer.courriers.len() == 1);
-        officer.notify(&messages::Message::Terminate).await.expect("Failed to notify courriers.");
+        officer.notify(&messages::InternalMessage::Terminate).await.expect("Failed to notify courriers.");
     }
 
 }

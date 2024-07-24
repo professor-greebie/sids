@@ -4,7 +4,7 @@ use std::io::Error;
 use log::info;
 use tokio::sync::mpsc;
 
-use super::{actor::{self, ActorType}, actor_ref::{self, BlockingActorRef, TokioActorRef}, messages, officer::{Officer, SelectActor}};
+use super::{actor::{self, ActorType}, actor_ref::{self, ActorRef, BlockingActorRef, TokioActorRef}, messages, officer::{Officer, SelectActor}};
 
 pub trait OfficerFactory {
     fn create_officer(&mut self, officer_type: SelectActor) -> Result<(), Error>;
@@ -14,37 +14,47 @@ pub trait OfficerFactory {
 
 
 pub(super) struct Guardian {
-    receiver: mpsc::Receiver<messages::Message>,
+    receiver: mpsc::Receiver<messages::GuardianMessage>,
     officers: Vec<Officer>,
 }
 
-impl ActorType for Guardian {
-    async fn receive(&self, message: messages::Message) -> Result<(), Error> {
+impl  Guardian {
+    async fn receive(&mut self, message: messages::GuardianMessage) -> Result<(), Error> {
         match message {
-            messages::Message::ActorMessage(messages::ActorMessage::Terminate) => {
+            messages::GuardianMessage::Terminate => {
+                for officer in self.officers.iter_mut() {
+                    officer.send(&messages::InternalMessage::Terminate).await;
+                }
                 // TODO: Terminate all officers and their courriers.
                 info!("Guardian Actor terminated");
-            }
-            messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder }) => {
-                responder.send(1).unwrap();
-            }
+            },
             _ => {}
         }
         Ok(())
+    }
+
+    pub(super) fn new(receiver: mpsc::Receiver<messages::GuardianMessage>) -> Guardian {
+        Guardian { receiver: receiver, officers: Vec::new() }
+    }
+
+    pub(super) async fn run(&mut self) {
+        while let Some(message) = self.receiver.recv().await {
+            self.receive(message).await.unwrap();
+        }
     }
 }
 
 impl OfficerFactory for Guardian {
      fn create_officer(&mut self, officer_type: SelectActor) -> Result<(), Error> {
-        let (snd, rec) = tokio::sync::mpsc::channel::<messages::Message>(super::SIDS_DEFAULT_BUFFER_SIZE);
-        let (blocking_snd, blocking_rec) = std::sync::mpsc::channel::<messages::Message>();
+        let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(super::SIDS_DEFAULT_BUFFER_SIZE);
+        let (blocking_snd, blocking_rec) = std::sync::mpsc::channel::<messages::InternalMessage>();
         match officer_type {
             SelectActor::Guardian => Err(Error::new(ErrorKind::InvalidInput, "Cannot create guardian officer outside of ActorSystem.")),
             SelectActor::Collector => {
                 let collector_officer = Officer {
                     _id: 1,
                     _type: SelectActor::Collector,
-                    actor: actor_ref::ActorRef::BlockingActorRef(BlockingActorRef::new(actor::Actor::Collector(actor::Collector::new(blocking_rec)), blocking_snd).unwrap()),
+                    actor: actor_ref::ActorRef::BlockingActorRef(BlockingActorRef::new(actor::Actor::Collector(actor::Collector::new(blocking_rec)), blocking_snd)?),
                     courriers: Vec::new(),
                 };
                 self.officers.push(collector_officer);
@@ -82,22 +92,12 @@ impl OfficerFactory for Guardian {
     }
 }
 
-impl Guardian {
-    pub(super) fn new(receiver: mpsc::Receiver<messages::Message>) -> Guardian {
-        Guardian { receiver: receiver, officers: Vec::new() }
-    }
-
-    pub(super) async fn run(&mut self) {
-        while let Some(message) = self.receiver.recv().await {
-            self.receive(message).await.unwrap();
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::oneshot;
+    use messages::ResponseMessage;
+    use tokio::sync::oneshot::{self, Sender};
 
     #[tokio::test]
     async fn test_guardian_actor() {
@@ -111,7 +111,7 @@ mod tests {
         assert!(guardian.officers.len() == 2);
         guardian.remove_officer(1).expect("Failed to remove officer.");
 
-        guardian.receive(messages::Message::Terminate).await.expect("Failed to terminate guardian.");
+        guardian.receive(messages::GuardianMessage::Terminate).await.expect("Failed to terminate guardian.");
         guardian.create_officer(SelectActor::Guardian).expect_err("Cannot create guardian officer outside of ActorSystem.");
 
     }
@@ -119,10 +119,10 @@ mod tests {
     #[tokio::test]
     async fn test_guardian_actor_get_next_id() {
         let (_tx, rx) = mpsc::channel(1);
-        let guardian = Guardian::new(rx);
+        let mut guardian = Guardian::new(rx);
         let (tx, rx) = oneshot::channel();
-        guardian.receive(messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: tx })).await.expect("Failed to get next id.");
-        assert_eq!(rx.await.unwrap(), 1);
+        guardian.receive(messages::GuardianMessage::CreateOfficer { officer_type: SelectActor::LogActor, responder: tx}).await.expect("Failed to get next id.");
+        assert_eq!(rx.await.unwrap(), ResponseMessage::Response(messages::Response::Success));
     }
 
 }

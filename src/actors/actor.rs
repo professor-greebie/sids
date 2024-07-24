@@ -12,17 +12,18 @@ use super::guardian::Guardian;
 #[trait_variant::make(HttpService: Send)]
 
 pub(in super) trait ActorType {
-    async fn receive(&self, message: messages::Message) -> Result<(), Error>;
+    async fn receive(&self, message: messages::InternalMessage) -> Result<(), Error>;
 }
 
 pub trait SyncActorType {
-    fn receive(&self, message: messages::Message) -> Result<(), Error>;
+    fn receive(&self, message: messages::InternalMessage) -> Result<(), Error>;
 }
 
 #[allow(dead_code)]
 pub(super) enum Actor {
     Guardian(Guardian),
     Collector(Collector),
+    LogActor(LogActor),
     CleaningActor(CleaningActor),
     KafkaProducerActor(KafkaProducerActor),
     NotAnActor,
@@ -31,18 +32,18 @@ pub(super) enum Actor {
 
 
 
-struct LogActor {
-    _receiver: mpsc::Receiver<messages::Message>,
+pub (super) struct LogActor {
+    _receiver: mpsc::Receiver<messages::InternalMessage>,
 }
 
 impl ActorType for LogActor {
-    async fn receive(&self, message: messages::Message) -> Result<(), Error> {
+    async fn receive(&self, message: messages::InternalMessage) -> Result<(), Error> {
         match message {
-            messages::Message::ActorMessage(messages::ActorMessage::Terminate) => {
+            messages::InternalMessage::ActorMessage(messages::ActorMessage::Terminate) => {
                 println!("Actor terminated");
             },
-            messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder }) => {
-                responder.send(1).unwrap();
+            messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId) => {
+                //responder.send(1).unwrap();
             }
             _ => {}
         }
@@ -50,30 +51,44 @@ impl ActorType for LogActor {
     }
 }
 
+impl LogActor {
+    pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> LogActor {
+        LogActor { _receiver: receiver }
+    }
+
+    pub(super) async fn run(&mut self) {
+        info!(actor = "Log Actor"; "Running log actor");
+        while let Some(message) = self._receiver.recv().await {
+            self.receive(message).await.unwrap();
+        }
+    }
+
+}
+
 
 
 pub(crate) struct Collector {
-    receiver: std::sync::mpsc::Receiver<messages::Message>,
+    receiver: std::sync::mpsc::Receiver<messages::InternalMessage>,
 }
 
 impl SyncActorType for Collector {
-    fn receive(&self, message: messages::Message) -> Result<(), Error> {
+    fn receive(&self, message: messages::InternalMessage) -> Result<(), Error> {
         match message {
-            messages::Message::CollectorMessage(messages::CollectorMessage::Terminate) => {
+            messages::InternalMessage::CollectorMessage(messages::CollectorMessage::Terminate) => {
                 println!("Actor terminated");
             },
-            messages::Message::CollectorMessage(messages::CollectorMessage::GetURITemplate { uri, location }) =>
+            messages::InternalMessage::CollectorMessage(messages::CollectorMessage::GetURITemplate { uri, location }) =>
             {
                 self.get_uri(uri, location).expect("Failed to get URI");
             },
-            messages::Message::CollectorMessage(messages::CollectorMessage::GetURI {
+            messages::InternalMessage::CollectorMessage(messages::CollectorMessage::GetURI {
                 uri,
                 location,
                 responder,
             }) => {
                 self.get_uri(uri, location).expect("Failed to get URI");
                 responder
-                    .send(messages::Message::Response(messages::Response::Success))
+                    .send(messages::ResponseMessage::Response(messages::Response::Success))
                     .unwrap();
             }
             _ => {}
@@ -84,7 +99,7 @@ impl SyncActorType for Collector {
 
 impl Collector {
     // Collector requires spawn blocking in order to get the response from the reqwest::blocking::get method.
-    pub (super) fn new(receiver: std::sync::mpsc::Receiver<messages::Message>) -> Collector {
+    pub (super) fn new(receiver: std::sync::mpsc::Receiver<messages::InternalMessage>) -> Collector {
         info!(actor = "Get Actor"; "Creating Get Actor");
         Collector { receiver: receiver }
     }
@@ -114,20 +129,17 @@ impl Collector {
 }
 
 pub(super) struct CleaningActor {
-    receiver: mpsc::Receiver<messages::Message>,
+    receiver: mpsc::Receiver<messages::InternalMessage>,
 }
 
 impl ActorType for CleaningActor {
-    async fn receive(&self, message: messages::Message) -> Result<(), Error> {
+    async fn receive(&self, message: messages::InternalMessage) -> Result<(), Error> {
         match message {
-            messages::Message::CleaningActorMessage(messages::CleaningActorMessage::Terminate) => {
+            messages::InternalMessage::CleaningActorMessage(messages::CleaningActorMessage::Terminate) => {
                 println!("Actor terminated");
             }
-            messages::Message::CleaningActorMessage(messages::CleaningActorMessage::Clean { location, responder }) => {
+            messages::InternalMessage::CleaningActorMessage(messages::CleaningActorMessage::Clean { location }) => {
                 //self.clean(location).expect("Failed to clean location");
-                responder
-                    .send(messages::Message::Response(messages::Response::Success))
-                    .unwrap();
             }
             _ => {}
         }
@@ -136,7 +148,7 @@ impl ActorType for CleaningActor {
 }
 
 impl CleaningActor {
-    pub(super) fn new(receiver: mpsc::Receiver<messages::Message>) -> CleaningActor {
+    pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> CleaningActor {
         CleaningActor { receiver: receiver }
     }
 
@@ -158,7 +170,7 @@ impl CleaningActor {
 
 
 pub (super) struct KafkaProducerActor {
-    receiver: mpsc::Receiver<messages::Message>,
+    receiver: mpsc::Receiver<messages::InternalMessage>,
     broker_host: String,
     broker_port: String,
 }
@@ -173,15 +185,14 @@ impl Default for KafkaProducerActor {
     }
 
 impl ActorType for KafkaProducerActor {
-    async fn receive(&self, message: messages::Message) -> Result<(), Error> {
+    async fn receive(&self, message: messages::InternalMessage) -> Result<(), Error> {
         match message {
-            messages::Message::KafkaProducerMessage(messages::KafkaProducerMessage::Terminate) => {
+            messages::InternalMessage::KafkaProducerMessage(messages::KafkaProducerMessage::Terminate) => {
                 println!("Actor terminated");
             }
-            messages::Message::KafkaProducerMessage(messages::KafkaProducerMessage::ProduceWithResponse {
+            messages::InternalMessage::KafkaProducerMessage(messages::KafkaProducerMessage::Produce {
                 topic,
                 message,
-                responder,
             }) => {
                 info!("Producing message to topic {}", topic);
                 let broker_string = format!("{}:{}", self.broker_host, self.broker_port);
@@ -192,10 +203,6 @@ impl ActorType for KafkaProducerActor {
                 producer
                     .send(&Record::from_value(topic.as_str(), message.as_bytes()))
                     .unwrap();
-
-                responder
-                    .send(messages::Message::Response(messages::Response::Success))
-                    .unwrap();
             }
 
             _ => {}
@@ -205,7 +212,7 @@ impl ActorType for KafkaProducerActor {
 }
 
 impl KafkaProducerActor {
-    pub (super) fn new(receiver: mpsc::Receiver<messages::Message>, host: Option<String>, port: Option<String>) -> KafkaProducerActor {
+    pub (super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>, host: Option<String>, port: Option<String>) -> KafkaProducerActor {
         KafkaProducerActor { receiver: receiver, broker_host: host.unwrap_or("localhost".to_string()), broker_port: port.unwrap_or("29092".to_string()) }
     }
 
@@ -222,20 +229,7 @@ mod tests {
     use super::*;
     use tokio::sync::oneshot;
 
-    #[tokio::test]
-    async fn test_guardian_actor() {
-        let (_tx, rx) = mpsc::channel(1);
-        let (tx2, rx2) = oneshot::channel();
-        let guardian = Guardian::new(rx);
-        let message1 = messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: tx2 });
-        let message2 = messages::Message::ActorMessage(messages::ActorMessage::Terminate);
-        guardian.receive(message1).await.unwrap();
-        
-        let response = rx2.await.unwrap();
-        assert_eq!(response, 1);
-        guardian.receive(message2).await.expect("Failed to terminate actor");
-
-    }
+    
 
 }
 

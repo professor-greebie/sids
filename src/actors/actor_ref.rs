@@ -2,18 +2,60 @@ use std::io::Error;
 
 use log::{error, info };
 
-use crate::actors::{actor, messages::Message};
+use crate::actors::{actor, messages::InternalMessage, guardian::Guardian};
 
-use super::messages;
+use super::messages::{self, ResponseMessage};
 
-type TokioSender = tokio::sync::mpsc::Sender<messages::Message>;
-type StdSender = std::sync::mpsc::Sender<messages::Message>;
+type TokioSender = tokio::sync::mpsc::Sender<messages::InternalMessage>;
+type StdSender = std::sync::mpsc::Sender<messages::InternalMessage>;
+type GuardianSender = tokio::sync::mpsc::Sender<messages::GuardianMessage>;
 
 #[allow(dead_code)]
 pub (super) enum ActorRef {
     TokioActorRef(TokioActorRef),
     BlockingActorRef(BlockingActorRef),
 }
+
+#[derive(Clone, Debug)]
+pub(super) struct GuardianActorRef {
+    sender: GuardianSender,
+}
+
+impl GuardianActorRef {
+    pub(super) fn new(guardian: Guardian, snd: GuardianSender) -> Self {
+
+        info!(actor = "Guardian"; "Spawning guardian actor");
+        tokio::spawn(async move {
+            let mut guardian = guardian;
+            guardian.run().await;
+        });
+        Self { sender: snd }
+    }
+
+    pub(super) async fn send(&mut self, message: &messages::GuardianMessage) {
+        match message {
+            
+            messages::GuardianMessage::Terminate => {
+                info!(actor = "Guardian"; "Terminating guardian actor");
+                let _ = self.sender.send(messages::GuardianMessage::Terminate).await;
+            },
+            messages::GuardianMessage::Dispatch { officer_id, ref_type, message }  => {
+                info!(actor = "Guardian"; "Dispatching message to officer");
+                //let _ = self.sender.send(messages::GuardianMessage::Dispatch { officer_id: *officer_id, ref_type: *ref_type, message: message.clone() }).await;
+            },
+
+            // Problems with moving messages from GuardianMessage to an ordinary message.
+            // Perhaps the best approach is to create the message from here and build the oneshot channel here.
+            // This way we can avoid the need to move the message.
+            _ => {
+                error!("No message to send");
+            }
+        }
+    }
+
+
+}
+
 
 
 #[allow(dead_code)]
@@ -41,15 +83,15 @@ impl BlockingActorRef {
         Ok(Self { sender })
     }
 
-    pub(super) fn send(&mut self, message: &messages::Message) {
+    pub(super) fn send(&mut self, message: &messages::InternalMessage) {
         let (snd, rec) = std::sync::mpsc::channel();
         match message {
-            messages::Message::CollectorMessage(messages::CollectorMessage::GetURITemplate {
+            messages::InternalMessage::CollectorMessage(messages::CollectorMessage::GetURITemplate {
                 uri,
                 location,
             }) => {
                 info!(actor = "Collector"; "Getting URI");
-                let _ = self.sender.send(Message::CollectorMessage(
+                let _ = self.sender.send(InternalMessage::CollectorMessage(
                     messages::CollectorMessage::GetURI {
                         uri: uri.to_string(),
                         location: location.to_string(),
@@ -58,10 +100,10 @@ impl BlockingActorRef {
                 ));
                 let response = rec.recv().unwrap();
                 match response {
-                    messages::Message::Response(messages::Response::Success) => {
+                    messages::ResponseMessage::Response(messages::Response::Success) => {
                         info!("Success");
                     }
-                    messages::Message::Response(messages::Response::Failure) => {
+                    messages::ResponseMessage::Response(messages::Response::Failure) => {
                         error!("Failure");
                     }
                     _ => {
@@ -70,7 +112,7 @@ impl BlockingActorRef {
                 }
             }
             _ => {
-                let _ = self.sender.send(messages::Message::NoMessage);
+                let _ = self.sender.send(messages::InternalMessage::NoMessage);
             }
         }
     }
@@ -105,39 +147,38 @@ impl TokioActorRef {
         Self { sender: snd }
     }
 
-    pub(super) async fn send(&mut self, message: &messages::Message) {
+    pub(super) async fn send(&mut self, message: &messages::InternalMessage) {
         match message {
-            messages::Message::KafkaProducerMessage(messages::KafkaProducerMessage::Produce {
+            messages::InternalMessage::KafkaProducerMessage(messages::KafkaProducerMessage::Produce {
                 topic,
                 message,
             }) => {
                 info!(actor = "Kafka Producer"; "Producing Kafka message");
-                let (snd, _rec) = tokio::sync::oneshot::channel();
+                let (snd, _rec) = tokio::sync::oneshot::channel::<ResponseMessage>();
                 let _ = self
                     .sender
-                    .send(messages::Message::KafkaProducerMessage(
-                        messages::KafkaProducerMessage::ProduceWithResponse {
+                    .send(messages::InternalMessage::KafkaProducerMessage(
+                        messages::KafkaProducerMessage::Produce {
                             topic: topic.to_string(),
                             message: message.to_string(),
-                            responder: snd,
                         },
                     ))
                     .await;
                 _rec.await.expect("Actor was killed before send.");
             },
-            messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: _resp }) => {
+            messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId) => {
 
                 // send the responder or force the actor reference to send the response?
-                let (snd, _rec) = tokio::sync::oneshot::channel();
-                let _ = self.sender.send(messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: snd })).await;
+                let (snd, _rec) = tokio::sync::oneshot::channel::<ResponseMessage>();
+                let _ = self.sender.send(messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId)).await;
                 // do something with the id;
                 _rec.await.expect("Actor was killed before send.");
             },
-            messages::Message::Terminate => {
-                let _ = self.sender.send(messages::Message::Terminate).await;
+            messages::InternalMessage::Terminate => {
+                let _ = self.sender.send(messages::InternalMessage::Terminate).await;
             },
             _ => {
-                let _ = self.sender.send(messages::Message::NoMessage).await;
+                let _ = self.sender.send(messages::InternalMessage::NoMessage).await;
             }
         }
     }
@@ -146,6 +187,10 @@ impl TokioActorRef {
 #[cfg(test)]
 mod tests {
     use crate::actors::guardian::Guardian;
+    use actor::LogActor;
+    use kafka::producer::AsBytes;
+    use kafka::producer::Producer;
+    use messages::Message;
 
 
     
@@ -157,31 +202,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_tokio_actor_ref() {
-        let (snd, rec) = tokio::sync::mpsc::channel::<Message>(10);
+        let (snd, rec) = tokio::sync::mpsc::channel::<InternalMessage>(10);
         let (snd2, _rec2) = tokio::sync::oneshot::channel::<u64>();
-        let actor = actor::Actor::Guardian(Guardian::new(rec));
+        let actor = actor::Actor::LogActor(LogActor::new(rec));
         let mut actor_ref = TokioActorRef::new(actor, snd);
         // the message never uses the responder here. Should we change the message to not include the responder?
-        let message = messages::Message::ActorMessage(messages::ActorMessage::GetNextId { responder: snd2 });
+        let message = messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId);
         let _ = actor_ref.send(&message).await;
-        let no_message = messages::Message::NoMessage;
+        let no_message = messages::InternalMessage::NoMessage;
         let _ = actor_ref.send(&no_message).await;
         assert!(true);
     }
 
-
     #[test]
     fn test_blocking_actor_ref() {
-        let (snd, rec) = std::sync::mpsc::channel();
+        let (snd, rec) = std::sync::mpsc::channel::<InternalMessage>();
         let actor = actor::Actor::Collector(actor::Collector::new(rec));
         let mut actor_ref = BlockingActorRef::new(actor, snd).unwrap();
-        let message = messages::Message::CollectorMessage(messages::CollectorMessage::GetURITemplate {
+        let message = messages::InternalMessage::CollectorMessage(messages::CollectorMessage::GetURITemplate {
             uri: "https://www.google.com".to_string(),
             location: "tmp".to_string(),
         });
         actor_ref.send(&message);
         assert!(true);
-        let message = messages::Message::NoMessage;
+        let message = messages::InternalMessage::NoMessage;
         let _ = actor_ref.send(&message);
 
     }
