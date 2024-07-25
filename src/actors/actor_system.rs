@@ -1,6 +1,5 @@
-use crate::actors::{actor_ref::ActorRef, messages::RefType};
 
-use super::{actor_ref::{GuardianActorRef, TokioActorRef}, guardian::Guardian, messages::{GuardianMessage, Message}};
+use super::{actor_ref::GuardianActorRef, guardian::Guardian, messages::{GuardianMessage, Message}};
 use log::info;
 
 
@@ -56,7 +55,7 @@ impl ActorSystem {
 
     pub async fn dispatch(&mut self, message: Message) {
         info!("Dispatching message to actor system");
-        let msg = GuardianMessage::Dispatch { officer_id: 1, ref_type: RefType::Tokio, message: message };
+        let msg = GuardianMessage::Dispatch { officer_id: 1, message: message };
         self.guardian.send(&msg).await;
     }
 
@@ -72,7 +71,6 @@ mod tests {
     use crate::actors::messages;
 
     use super::*;
-    use tokio::sync::oneshot;
 
     #[tokio::test]
     #[allow(dead_code)]

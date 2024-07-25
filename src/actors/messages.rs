@@ -1,4 +1,4 @@
-use super::{actor_ref::ActorRef, officer::SelectActor};
+use super::officer::SelectActor;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 
@@ -12,15 +12,52 @@ pub enum RefType {
 /// 
 /// The guardian actor will create the responders to allow for the officers to communicate back to the guardian
 /// for status updates and other messages.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     Terminate, 
     GetId,
-    GetURITemplate {
+    GetURI {
         uri: String,
         location: String
     },
+    KafkaProduce {
+        topic: String,
+        key: String,
+        message: String
+    },
+    KafkaConsume {
+        topic: String,
+        group: String,    
+    }
 
+}
+
+impl Message {
+    pub fn to_internal_message(self) -> InternalMessage {
+        let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
+        match self {
+            Message::Terminate => {
+                InternalMessage::Terminate
+            },
+            Message::GetId => {
+                InternalMessage::GetId
+            },
+            Message::GetURI { uri, location } => {
+                let (tx, _rx) = std::sync::mpsc::channel::<ResponseMessage>();
+                InternalMessage::CollectorMessage(CollectorMessage::GetURI { uri: uri, location: location, responder: tx })
+                // Need to figure out how to handle the response message
+            },
+            Message::KafkaProduce { topic, key, message }
+            => {
+                InternalMessage::KafkaProducerMessage(KafkaProducerMessage::Produce { topic: topic, key: key, message: message, responder: tx })
+                // Need to figure out how to handle the response message
+            }
+            Message::KafkaConsume { topic: _, group: _ } => {
+                // Establish consumption process later
+                InternalMessage::NoMessage
+            }
+    }
+    }
 }
 
 
@@ -33,6 +70,7 @@ pub enum InternalMessage {
     CollectorMessage(CollectorMessage),
     KafkaProducerMessage(KafkaProducerMessage),
     CleaningActorMessage(CleaningActorMessage),
+    GetId,
     NoMessage,
     Terminate
 }
@@ -61,7 +99,6 @@ pub (super) enum GuardianMessage {
     Terminate, 
     Dispatch {
         officer_id: u32,
-        ref_type: RefType,
         message: Message,
     },
     CreateOfficer {
@@ -126,6 +163,8 @@ pub enum KafkaProducerMessage {
     Terminate,
     Produce {
         topic: String,
+        key: String,
         message: String,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
     },
 }

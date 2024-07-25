@@ -2,7 +2,6 @@ use crate::actors::messages;
 
 use kafka::producer::Record;
 use log::info;
-use mockall::automock;
 use std::io::prelude::*;
 use std::io::Error;
 use tokio::sync::mpsc;
@@ -52,10 +51,12 @@ impl ActorType for LogActor {
 }
 
 impl LogActor {
+    #[allow(dead_code)]
     pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> LogActor {
         LogActor { _receiver: receiver }
     }
 
+    #[allow(dead_code)]
     pub(super) async fn run(&mut self) {
         info!(actor = "Log Actor"; "Running log actor");
         while let Some(message) = self._receiver.recv().await {
@@ -129,7 +130,8 @@ impl Collector {
 }
 
 pub(super) struct CleaningActor {
-    receiver: mpsc::Receiver<messages::InternalMessage>,
+
+    _receiver: mpsc::Receiver<messages::InternalMessage>,
 }
 
 impl ActorType for CleaningActor {
@@ -138,7 +140,7 @@ impl ActorType for CleaningActor {
             messages::InternalMessage::CleaningActorMessage(messages::CleaningActorMessage::Terminate) => {
                 println!("Actor terminated");
             }
-            messages::InternalMessage::CleaningActorMessage(messages::CleaningActorMessage::Clean { location }) => {
+            messages::InternalMessage::CleaningActorMessage(messages::CleaningActorMessage::Clean { location: _ }) => {
                 //self.clean(location).expect("Failed to clean location");
             }
             _ => {}
@@ -149,16 +151,18 @@ impl ActorType for CleaningActor {
 
 impl CleaningActor {
     pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> CleaningActor {
-        CleaningActor { receiver: receiver }
+        CleaningActor { _receiver: receiver }
     }
 
+    #[allow(dead_code)]
     pub(super) async fn run(&mut self) {
         info!(actor = "Cleaning Actor"; "Running cleaning actor");
-        while let Some(message) = self.receiver.recv().await {
+        while let Some(message) = self._receiver.recv().await {
             self.receive(message).await.unwrap();
         }
     }
 
+    #[allow(dead_code)]
     fn clean(&self, location: String) -> Result<(), Error> {
         info!("Cleaning location {}", location);
         std::fs::remove_file(location).unwrap();
@@ -192,7 +196,9 @@ impl ActorType for KafkaProducerActor {
             }
             messages::InternalMessage::KafkaProducerMessage(messages::KafkaProducerMessage::Produce {
                 topic,
+                key,
                 message,
+                responder: _, 
             }) => {
                 info!("Producing message to topic {}", topic);
                 let broker_string = format!("{}:{}", self.broker_host, self.broker_port);
@@ -201,7 +207,7 @@ impl ActorType for KafkaProducerActor {
                         .create()
                         .unwrap();
                 producer
-                    .send(&Record::from_value(topic.as_str(), message.as_bytes()))
+                    .send(&Record::from_key_value(topic.as_str(), key.as_str(), message.as_bytes()))
                     .unwrap();
             }
 
@@ -212,6 +218,7 @@ impl ActorType for KafkaProducerActor {
 }
 
 impl KafkaProducerActor {
+    #[allow(dead_code)]
     pub (super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>, host: Option<String>, port: Option<String>) -> KafkaProducerActor {
         KafkaProducerActor { receiver: receiver, broker_host: host.unwrap_or("localhost".to_string()), broker_port: port.unwrap_or("29092".to_string()) }
     }
@@ -224,13 +231,5 @@ impl KafkaProducerActor {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::sync::oneshot;
-
-    
-
-}
 
 

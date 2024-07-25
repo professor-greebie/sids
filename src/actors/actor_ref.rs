@@ -39,14 +39,10 @@ impl GuardianActorRef {
                 info!(actor = "Guardian"; "Terminating guardian actor");
                 let _ = self.sender.send(messages::GuardianMessage::Terminate).await;
             },
-            messages::GuardianMessage::Dispatch { officer_id, ref_type, message }  => {
+            messages::GuardianMessage::Dispatch { officer_id, message }  => {
                 info!(actor = "Guardian"; "Dispatching message to officer");
-                //let _ = self.sender.send(messages::GuardianMessage::Dispatch { officer_id: *officer_id, ref_type: *ref_type, message: message.clone() }).await;
+                let _ = self.sender.send(messages::GuardianMessage::Dispatch { officer_id: *officer_id, message: message.clone() }).await;
             },
-
-            // Problems with moving messages from GuardianMessage to an ordinary message.
-            // Perhaps the best approach is to create the message from here and build the oneshot channel here.
-            // This way we can avoid the need to move the message.
             _ => {
                 error!("No message to send");
             }
@@ -151,7 +147,9 @@ impl TokioActorRef {
         match message {
             messages::InternalMessage::KafkaProducerMessage(messages::KafkaProducerMessage::Produce {
                 topic,
+                key,
                 message,
+                responder: _,
             }) => {
                 info!(actor = "Kafka Producer"; "Producing Kafka message");
                 let (snd, _rec) = tokio::sync::oneshot::channel::<ResponseMessage>();
@@ -160,7 +158,9 @@ impl TokioActorRef {
                     .send(messages::InternalMessage::KafkaProducerMessage(
                         messages::KafkaProducerMessage::Produce {
                             topic: topic.to_string(),
+                            key: key.to_string(),
                             message: message.to_string(),
+                            responder: snd,
                         },
                     ))
                     .await;
@@ -169,7 +169,7 @@ impl TokioActorRef {
             messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId) => {
 
                 // send the responder or force the actor reference to send the response?
-                let (snd, _rec) = tokio::sync::oneshot::channel::<ResponseMessage>();
+                let (_snd, _rec) = tokio::sync::oneshot::channel::<ResponseMessage>();
                 let _ = self.sender.send(messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId)).await;
                 // do something with the id;
                 _rec.await.expect("Actor was killed before send.");
@@ -186,11 +186,7 @@ impl TokioActorRef {
 
 #[cfg(test)]
 mod tests {
-    use crate::actors::guardian::Guardian;
     use actor::LogActor;
-    use kafka::producer::AsBytes;
-    use kafka::producer::Producer;
-    use messages::Message;
 
 
     
@@ -203,7 +199,7 @@ mod tests {
     #[tokio::test]
     async fn test_tokio_actor_ref() {
         let (snd, rec) = tokio::sync::mpsc::channel::<InternalMessage>(10);
-        let (snd2, _rec2) = tokio::sync::oneshot::channel::<u64>();
+        let (_snd2, _rec2) = tokio::sync::oneshot::channel::<u64>();
         let actor = actor::Actor::LogActor(LogActor::new(rec));
         let mut actor_ref = TokioActorRef::new(actor, snd);
         // the message never uses the responder here. Should we change the message to not include the responder?
@@ -232,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_blocking_actor_ref_error() {
-        let (snd, rec) = std::sync::mpsc::channel();
+        let (snd, _rec) = std::sync::mpsc::channel();
         let actor = actor::Actor::NotAnActor;
         assert!(BlockingActorRef::new(actor, snd).is_err());
     }

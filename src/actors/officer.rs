@@ -1,6 +1,6 @@
-use super::actor_ref;
+use super::{actor_ref, messages};
 use super::actor_ref::ActorRef;
-use super::messages;
+use super::messages::InternalMessage;
 
 #[derive(Debug, Clone, Copy)]
 pub enum SelectActor {
@@ -19,13 +19,13 @@ pub (super) struct Officer {
 
 impl Officer{
 
-    pub async fn send(&mut self, message: &messages::InternalMessage) {
+    pub async fn send(&mut self, message: messages::Message) {
         match self.actor {
             actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {
-                blocking_actor_ref.send(message);
+                blocking_actor_ref.send(&message.to_internal_message());
             },
             actor_ref::ActorRef::TokioActorRef(ref mut tokio_actor_ref) => {
-                tokio_actor_ref.send(message).await;
+                tokio_actor_ref.send(&message.to_internal_message()).await;
             }
         }
     }
@@ -40,13 +40,14 @@ impl Officer{
         //self.courriers.retain(|a| a != &actor);
     }
 
-    pub async fn notify(&mut self, message: &messages::InternalMessage) -> Result<(), std::io::Error> {
+    #[allow(dead_code)]
+    pub async fn notify(&mut self, message: &InternalMessage) -> Result<(), std::io::Error> {
         self.notify_blocking_courriers(message);
         self.notify_tokio_courriers(message).await;
         Ok(())
     }
 
-    pub fn notify_blocking_courriers(&mut self, message: &messages::InternalMessage) {
+    pub fn notify_blocking_courriers(&mut self, message: &InternalMessage) {
         for courier in self.courriers.iter_mut() {
             match courier {
                 actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {

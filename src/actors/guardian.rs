@@ -4,7 +4,7 @@ use std::io::Error;
 use log::info;
 use tokio::sync::mpsc;
 
-use super::{actor::{self, ActorType}, actor_ref::{self, ActorRef, BlockingActorRef, TokioActorRef}, messages, officer::{Officer, SelectActor}};
+use super::{actor, actor_ref::{self, BlockingActorRef, TokioActorRef}, messages, officer::{Officer, SelectActor}};
 
 pub trait OfficerFactory {
     fn create_officer(&mut self, officer_type: SelectActor) -> Result<(), Error>;
@@ -20,13 +20,21 @@ pub(super) struct Guardian {
 
 impl  Guardian {
     async fn receive(&mut self, message: messages::GuardianMessage) -> Result<(), Error> {
+        // Will officers always be non-blocking?
         match message {
             messages::GuardianMessage::Terminate => {
                 for officer in self.officers.iter_mut() {
-                    officer.send(&messages::InternalMessage::Terminate).await;
+                    officer.send(messages::Message::Terminate).await;
                 }
                 // TODO: Terminate all officers and their courriers.
                 info!("Guardian Actor terminated");
+            },
+            messages::GuardianMessage::Dispatch { officer_id, message } => {
+                for officer in self.officers.iter_mut() {
+                    if officer._id == officer_id {
+                        officer.send(message.clone()).await;
+                    }
+                }
             },
             _ => {}
         }
@@ -86,7 +94,7 @@ impl OfficerFactory for Guardian {
         Err(Error::new(ErrorKind::NotFound, "Officer not found."))
     }
 
-    fn add_courrier(&mut self, officer_id: u32, courrier_type: SelectActor) -> Result<(), Error> {
+    fn add_courrier(&mut self, _officer_id: u32, _courrier_type: SelectActor) -> Result<(), Error> {
         Err(Error::new(ErrorKind::InvalidInput, "Not implemented."))
         
     }
@@ -97,7 +105,7 @@ impl OfficerFactory for Guardian {
 mod tests {
     use super::*;
     use messages::ResponseMessage;
-    use tokio::sync::oneshot::{self, Sender};
+    use tokio::sync::oneshot;
 
     #[tokio::test]
     async fn test_guardian_actor() {
