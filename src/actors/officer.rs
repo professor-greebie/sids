@@ -36,8 +36,8 @@ impl Officer{
         self.courriers.push(actor);
     }
     #[allow(dead_code)]
-    pub fn unsubscribe(&mut self, _actor: actor_ref::ActorRef) {
-        //self.courriers.retain(|a| a != &actor);
+    pub fn unsubscribe(&mut self, actor_id: u32) {
+        self.courriers.remove(actor_id as usize);
     }
 
     #[allow(dead_code)]

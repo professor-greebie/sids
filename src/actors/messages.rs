@@ -15,6 +15,9 @@ pub enum RefType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     Terminate, 
+    TerminateById {
+        id: u32
+    },
     GetId,
     GetURI {
         uri: String,
@@ -38,6 +41,9 @@ impl Message {
         match self {
             Message::Terminate => {
                 InternalMessage::Terminate
+            },
+            Message::TerminateById { id } => {
+                InternalMessage::TerminateById { id: id }
             },
             Message::GetId => {
                 InternalMessage::GetId
@@ -72,7 +78,10 @@ pub enum InternalMessage {
     CleaningActorMessage(CleaningActorMessage),
     GetId,
     NoMessage,
-    Terminate
+    Terminate, 
+    TerminateById {
+        id: u32
+    },
 }
 
 

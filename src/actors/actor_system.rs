@@ -1,5 +1,7 @@
 
-use super::{actor_ref::GuardianActorRef, guardian::Guardian, messages::{GuardianMessage, Message}};
+use std::io::{Error, ErrorKind};
+
+use super::{actor_ref::GuardianActorRef, guardian::Guardian, messages::{GuardianMessage, Message, ResponseMessage}, officer::SelectActor};
 use log::info;
 
 
@@ -40,23 +42,72 @@ impl ActorSystem {
     pub fn new() -> Self {
         let (snd, rec) = tokio::sync::mpsc::channel(super::SIDS_DEFAULT_BUFFER_SIZE);
         let guardian = Guardian::new(rec);
+
+        info!(actor = "guardian"; "Guardian channel and actor created. Launching...");
         let actor_ref = GuardianActorRef::new(guardian, snd);
+        info!(actor = "guardian"; "Guardian actor spawned");
+        info!(actor = "guardian"; "Actor system created");
 
         ActorSystem {
             guardian: actor_ref,
         }
     }
 
-    pub async fn start_system(&mut self) {
+    pub async fn stop_system(&mut self) {
+        info!("Stopping actor system");
+        let msg = GuardianMessage::Terminate;
+        self.guardian.send(&msg).await;
+    }
 
-        //TODO: Ready the guardian actor with a message to start the system.
-        //self.guardian.run().await;
+    pub async fn create_officer(&mut self, actor_type: SelectActor) -> Result<(), Error> {
+        let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
+        let msg = GuardianMessage::CreateOfficer { officer_type: actor_type, responder: tx };
+        self.guardian.send(&msg).await;
+        match _rx.await {
+            Ok(ResponseMessage::Success) => Ok(()),
+            Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to create officer")),
+            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to create officer")),
+        }
+    }
+
+    pub async fn remove_officer(&mut self, officer_id: u32) -> Result<(), Error> {
+        let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
+        let msg = GuardianMessage::RemoveOfficer { officer_id, responder: tx };
+        self.guardian.send(&msg).await;
+        match _rx.await {
+            Ok(ResponseMessage::Success) => Ok(()),
+            Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to remove officer")),
+            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to remove officer")),
+        }
     }
 
     pub async fn dispatch(&mut self, message: Message) {
         info!("Dispatching message to actor system");
         let msg = GuardianMessage::Dispatch { officer_id: 1, message: message };
         self.guardian.send(&msg).await;
+    }
+
+    pub async fn add_courrier(&mut self, officer_id: u32, courrier_type: SelectActor) -> Result<(), Error> {
+        let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
+        let msg = GuardianMessage::AddCourrier { officer_id, courrier_type, responder: tx };
+        self.guardian.send(&msg).await;
+        match _rx.await {
+            Ok(ResponseMessage::Success) => Ok(()),
+            Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to add courrier")),
+            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to add courrier")),
+        }
+    }
+
+    pub async fn remove_courrier(&mut self, officer_id: u32) -> Result<(), Error> {
+        let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
+        let msg = GuardianMessage::RemoveCourrier { officer_id, courrier_id: 1, responder: tx };
+        self.guardian.send(&msg).await;
+        match _rx.await {
+            Ok(ResponseMessage::Success) => Ok(()),
+            Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to remove courrier")),
+            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to remove courrier")),
+        }
+    
     }
 
     
@@ -80,7 +131,6 @@ mod tests {
         // message responder is never used in the message. Should we change the message to not include the responder?
         let _message = messages::Message::GetId;
 
-        actor_system.start_system().await;
         actor_system.dispatch(_message).await;
         assert!(true);
 
