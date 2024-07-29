@@ -94,7 +94,7 @@ impl SyncActorType for Collector {
             }) => {
                 self.get_uri(uri, location).expect("Failed to get URI");
                 responder
-                    .send(messages::ResponseMessage::Response(messages::Response::Success))
+                    .send(messages::ResponseMessage::Success)
                     .unwrap();
             }
             _ => {}
@@ -203,6 +203,11 @@ impl ActorType for KafkaProducerActor {
                 key,
                 message,
             }) => {
+
+                // On test environment, we don't want to produce messages to Kafka.
+                if cfg!(test){
+                    return Ok(());
+                }
                 info!("Producing message to topic {}", topic);
                 let broker_string = format!("{}:{}", self.broker_host, self.broker_port);
                 let mut producer =

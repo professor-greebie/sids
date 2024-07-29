@@ -63,9 +63,8 @@ impl Guardian {
                         };
                         self.officers.push(collector_officer);
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Success,
-                            ))
+                            .send(messages::ResponseMessage::Success,
+                            )
                             .unwrap();
                     }
                     SelectActor::CleaningActor => {
@@ -79,21 +78,19 @@ impl Guardian {
                             actor: actor_ref::ActorRef::TokioActorRef(TokioActorRef::new(
                                 actor::Actor::CleaningActor(actor::CleaningActor::new(rec)),
                                 snd,
-                            )),
+                            ).expect("Failed to create tokio actor ref")),
                             courriers: Vec::new(),
                         };
                         self.officers.push(cleaning_officer);
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Success,
-                            ))
+                            .send(messages::ResponseMessage::Success,
+                            )
                             .unwrap();
                     }
                     SelectActor::KafkaProducerActor => {
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Success,
-                            ))
+                            .send(messages::ResponseMessage::Success,
+                            )
                             .unwrap();
                     }
                     SelectActor::LogActor => {
@@ -106,21 +103,19 @@ impl Guardian {
                             actor: actor_ref::ActorRef::TokioActorRef(TokioActorRef::new(
                                 actor::Actor::LogActor(actor::LogActor::new(rec)),
                                 snd,
-                            )),
+                            ).expect("Failed to create tokio actor ref")),
                             courriers: Vec::new(),
                         };
                         self.officers.push(log_actor);
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Success,
-                            ))
+                            .send(messages::ResponseMessage::Success,
+                            )
                             .unwrap();
                     }
                     _ => {
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Failure,
-                            ))
+                            .send(messages::ResponseMessage::Failure,
+                            )
                             .unwrap();
                     }
                 }
@@ -132,16 +127,14 @@ impl Guardian {
                 match self.remove_officer(officer_id) {
                     Ok(_) => {
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Success,
-                            ))
+                            .send(messages::ResponseMessage::Success,
+                            )
                             .unwrap();
                     }
                     Err(_) => {
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Failure,
-                            ))
+                            .send(messages::ResponseMessage::Failure,
+                            )
                             .unwrap();
                     }
                 }
@@ -154,16 +147,14 @@ impl Guardian {
                 match self.add_courrier(officer_id, courrier_type) {
                     Ok(_) => {
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Success,
-                            ))
+                            .send(messages::ResponseMessage::Success,
+                            )
                             .unwrap();
                     }
                     Err(_) => {
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Failure,
-                            ))
+                            .send(messages::ResponseMessage::Failure,
+                            )
                             .unwrap();
                     }
                 }
@@ -177,20 +168,21 @@ impl Guardian {
                 match self.remove_courrier(officer_id, courrier_id) {
                     Ok(_) => {
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Success,
-                            ))
+                            .send(messages::ResponseMessage::Success,
+                            )
                             .unwrap();
                     }
                     Err(_) => {
                         responder
-                            .send(messages::ResponseMessage::Response(
-                                messages::Response::Failure,
-                            ))
+                            .send(messages::ResponseMessage::Failure,
+                            )
                             .unwrap();
                     }
                 }
             },
+            _ => {
+                info!("No message to send");
+            }
         }
 
         Ok(())
@@ -241,7 +233,7 @@ impl OfficerFactory for Guardian {
                     actor: actor_ref::ActorRef::TokioActorRef(TokioActorRef::new(
                         actor::Actor::CleaningActor(actor::CleaningActor::new(rec)),
                         snd,
-                    )),
+                    ).expect("Failed to create tokio actor ref")),
                     courriers: Vec::new(),
                 };
                 self.officers.push(cleaning_officer);
@@ -327,7 +319,7 @@ mod tests {
             .expect("Failed to get next id.");
         assert_eq!(
             rx.await.unwrap(),
-            ResponseMessage::Response(messages::Response::Success)
+            ResponseMessage::Success
         );
     }
 }

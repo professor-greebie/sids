@@ -75,7 +75,7 @@ impl Officer{
 
 #[cfg(test)]
 mod tests {
-    use crate::actors::actor::{Actor, CleaningActor};
+    use crate::actors::actor::{Actor, CleaningActor, Collector};
 
     use super::*;
     use tokio::sync::mpsc;
@@ -87,13 +87,35 @@ mod tests {
         let mut officer = Officer {
             _id: 1,
             _type: SelectActor::Collector,
-            actor: actor_ref::ActorRef::TokioActorRef(actor_ref::TokioActorRef::new(Actor::CleaningActor(CleaningActor::new(rx)), _tx)),
+            actor: actor_ref::ActorRef::TokioActorRef(actor_ref::TokioActorRef::new(Actor::CleaningActor(CleaningActor::new(rx)), _tx).expect("Failed to create actor ref.")),
             courriers: Vec::new(),
         };
-        let actor_ref = actor_ref::ActorRef::TokioActorRef(actor_ref::TokioActorRef::new(Actor::CleaningActor(CleaningActor::new(rx2)), _tx2));
+        let actor_ref = actor_ref::ActorRef::TokioActorRef(actor_ref::TokioActorRef::new(Actor::CleaningActor(CleaningActor::new(rx2)), _tx2).expect("Failed to create actor ref."));
         officer.subscribe(actor_ref);
         assert!(officer.courriers.len() == 1);
         officer.notify(&messages::InternalMessage::Terminate).await.expect("Failed to notify courriers.");
+    }
+    #[tokio::test]
+
+    async fn test_blocking_officer() {
+        let (_tx, rx) = std::sync::mpsc::channel();
+        let actor_ref = actor_ref::ActorRef::BlockingActorRef(actor_ref::BlockingActorRef::new(Actor::Collector(Collector::new(rx)), _tx).expect("Failed to create actor ref."));
+        let mut officer = Officer {
+            _id: 1,
+            _type: SelectActor::Collector,
+            actor: actor_ref,
+            courriers: Vec::new(),
+        };
+        let (_tx2, rx2) = std::sync::mpsc::channel();
+        let (tx3, rx3) = tokio::sync::mpsc::channel(10);
+        let actor_ref = actor_ref::ActorRef::BlockingActorRef(actor_ref::BlockingActorRef::new(Actor::Collector(Collector::new(rx2)), _tx2).expect("Failed to create actor ref."));
+        officer.subscribe(actor_ref);
+        assert!(officer.courriers.len() == 1);
+        let actor_ref_tokio = actor_ref::ActorRef::TokioActorRef(actor_ref::TokioActorRef::new(Actor::CleaningActor(CleaningActor::new(rx3)), tx3).expect("Failed to create actor ref."));
+        officer.subscribe(actor_ref_tokio);
+        assert!(officer.courriers.len() == 2);
+        officer.notify(&messages::InternalMessage::Terminate).await.expect("Failed to notify courriers.");
+        
     }
 
 }
