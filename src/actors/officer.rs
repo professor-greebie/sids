@@ -20,12 +20,14 @@ pub (super) struct Officer {
 impl Officer{
 
     pub async fn send(&mut self, message: messages::Message) {
+        // ought the officer act as an ActorRef or should it have an ActorRef itself
+        // or do we always pass a Message to the ActorRef and let the actor ref convert it?
         match self.actor {
             actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {
-                blocking_actor_ref.send(&message.to_internal_message());
+                blocking_actor_ref.send(&message.to_internal_message(None).unwrap());
             },
             actor_ref::ActorRef::TokioActorRef(ref mut tokio_actor_ref) => {
-                tokio_actor_ref.send(&message.to_internal_message()).await;
+                tokio_actor_ref.send(&message.to_internal_message(None).unwrap()).await;
             }
         }
     }

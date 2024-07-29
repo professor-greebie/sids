@@ -333,7 +333,9 @@ checksum = "a21f936df1771bf62b77f047b726c4625ff2e8aa607c01ec06e5a05bd8463401"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits 0.2.19",
+ "wasm-bindgen",
  "windows-targets 0.52.5",
 ]
 
@@ -1936,6 +1938,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 name = "sids"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "env_logger",
  "kafka",
  "log",

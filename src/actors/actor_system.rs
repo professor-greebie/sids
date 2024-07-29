@@ -16,15 +16,14 @@ use log::info;
     /// # Example
     /// ```rust
     /// use sids::actors::actor_system::ActorSystem;
-    /// use sids::actors::messages::{Message, ActorMessage};
+    /// use sids::actors::messages::{Message, ResponseMessage};
     /// 
     /// pub async fn run_system() {
     /// 
-    ///     let (tx, _rx) = tokio::sync::oneshot::channel();
+    ///     let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
 
     ///     let mut actor_system = ActorSystem::new();
-    ///     actor_system.start_system().await; 
-    ///     actor_system.dispatch(Message::ActorMessage(ActorMessage::GetNextId { responder: tx })).await;
+    ///     actor_system.dispatch(Message::GetId).await;
     ///     actor_system.dispatch(Message::Terminate).await;
     /// }
     /// 

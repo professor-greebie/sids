@@ -1,3 +1,5 @@
+use std::io::Error;
+
 use super::officer::SelectActor;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -31,36 +33,77 @@ pub enum Message {
     KafkaConsume {
         topic: String,
         group: String,    
-    }
+    },
+    LogMessage {
+        message: String
+    },
+    LogMessageWithResponse {
+        message: String,
+    },
 
 }
 
 impl Message {
-    pub fn to_internal_message(self) -> InternalMessage {
-        let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
+
+    pub fn to_internal_message(self, tx: Option<tokio::sync::oneshot::Sender<ResponseMessage>>) -> Result<InternalMessage, Error> {
+        // maybe change this to return a result or an Option<InternalMessage> instead.
         match self {
             Message::Terminate => {
-                InternalMessage::Terminate
+                
+                Ok(InternalMessage::Terminate)
+            },
+            Message::LogMessage { message } => {
+                Ok(InternalMessage::LogMessage { message: message })
+                
+            },
+            Message::LogMessageWithResponse { message } => {
+                match tx {
+                    None => {
+                        return Err(Error::new(std::io::ErrorKind::InvalidInput, "Cannot log message without a responder."))
+                    },
+                    _ => {}
+                }
+                Ok(InternalMessage::LogMessageWithResponse { message: message, responder: tx.unwrap() })
             },
             Message::TerminateById { id } => {
-                InternalMessage::TerminateById { id: id }
+                Ok(InternalMessage::TerminateById { id: id })
             },
             Message::GetId => {
-                InternalMessage::GetId
+                Ok(InternalMessage::GetId)
             },
-            Message::GetURI { uri, location } => {
-                let (tx, _rx) = std::sync::mpsc::channel::<ResponseMessage>();
-                InternalMessage::CollectorMessage(CollectorMessage::GetURI { uri: uri, location: location, responder: tx })
+            Message::GetURI { uri: _, location: _ } => {
+                // Cannot get URI without a blocking responder.
+                Err(Error::new(std::io::ErrorKind::InvalidInput, "Cannot get URI without a blocking responder. Use blocking internal message instead, 
+                and include an std::sync::mpsc::Sender."))
                 // Need to figure out how to handle the response message
             },
             Message::KafkaProduce { topic, key, message }
             => {
-                InternalMessage::KafkaProducerMessage(KafkaProducerMessage::Produce { topic: topic, key: key, message: message, responder: tx })
+                Ok(InternalMessage::KafkaProducerMessage(KafkaProducerMessage::Produce { topic: topic, key: key, message: message }))
                 // Need to figure out how to handle the response message
             }
             Message::KafkaConsume { topic: _, group: _ } => {
                 // Establish consumption process later
-                InternalMessage::NoMessage
+                Ok(InternalMessage::NoMessage)
+            }
+    }
+    }
+
+    pub fn to_blocking_internal_message(self, tx: Option<std::sync::mpsc::Sender<ResponseMessage>>) -> Result<InternalMessage, Error> {
+        match tx {
+            None => {
+                return self.to_internal_message(None)
+            },
+            _ => {}
+        }
+        match self {
+            // maybe change this to return a result or an Option<InternalMessage> instead.
+            Message::GetURI { uri, location } => {
+                Ok(InternalMessage::CollectorMessage(CollectorMessage::GetURI { uri: uri, location: location, responder: tx.unwrap() }))
+                // Need to figure out how to handle the response message
+            },
+            _ => {
+                Ok(InternalMessage::NoMessage)
             }
     }
     }
@@ -72,7 +115,6 @@ impl Message {
 /// All responders created by these items ought to be created by the guardian actor.
 #[derive(Debug)]
 pub enum InternalMessage {
-    ActorMessage(ActorMessage),
     CollectorMessage(CollectorMessage),
     KafkaProducerMessage(KafkaProducerMessage),
     CleaningActorMessage(CleaningActorMessage),
@@ -81,6 +123,13 @@ pub enum InternalMessage {
     Terminate, 
     TerminateById {
         id: u32
+    },
+    LogMessage {
+        message: String
+    },
+    LogMessageWithResponse {
+        message: String,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>
     },
 }
 
@@ -138,12 +187,6 @@ pub enum CleaningActorMessage {
     },
 }
 
-#[derive(Debug)]
-pub enum ActorMessage {
-    Terminate,
-    GetNextId,
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 
 pub enum Response {
@@ -174,6 +217,110 @@ pub enum KafkaProducerMessage {
         topic: String,
         key: String,
         message: String,
-        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
     },
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::*;
+
+
+    #[test]
+    fn test_message_to_internal_message() {
+        let message = Message::LogMessage { message: "Test".to_string() };
+        let message2 = Message::LogMessageWithResponse { message: "Test".to_string() };
+        let message3 = Message::Terminate;
+        let message4 = Message::TerminateById { id: 1 };
+        let message5 = Message::GetId;
+        let message6 = Message::GetURI { uri: "http://example.com".to_string(), location: "test".to_string() };
+        let message7 = Message::KafkaProduce { topic: "test".to_string(), key: "test".to_string(), message: "test".to_string() };
+        let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
+        let (tx2, _rx2) = tokio::sync::oneshot::channel::<ResponseMessage>();
+        let (tx1, _rx1) = std::sync::mpsc::channel::<ResponseMessage>();
+        let internal_message1 = message.to_internal_message(Some(tx)).unwrap();
+        let internal_message2 = message2.to_internal_message(Some(tx2)).unwrap();
+        let internal_message3 = message3.to_internal_message(None).unwrap();
+        let internal_message4 = message4.to_internal_message(None).unwrap();
+        let internal_message5 = message5.to_internal_message(None).unwrap();
+        let internal_message6 = message6.clone().to_blocking_internal_message(Some(tx1)).unwrap();
+        let internal_message6a = message6.clone().to_blocking_internal_message(None).err().unwrap();
+        let internal_message7 = message7.to_internal_message(None).unwrap();
+
+        match internal_message1 {
+            InternalMessage::LogMessage { message } => {
+                assert_eq!(message, "Test".to_string());
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+        match internal_message2 {
+            InternalMessage::LogMessageWithResponse { message, responder: _ } => {
+                assert_eq!(message, "Test".to_string());
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+        match internal_message3 {
+            InternalMessage::Terminate => {
+                assert!(true);
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+        match internal_message4 {
+            InternalMessage::TerminateById { id } => {
+                assert_eq!(id, 1);
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+        match internal_message5 {
+            InternalMessage::GetId => {
+                assert!(true);
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+        match internal_message6 {
+            InternalMessage::CollectorMessage(CollectorMessage::GetURI {
+                uri, location: _, responder: _
+            }) => {
+                assert_eq!(uri, "http://example.com".to_string());
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+        match internal_message6a.kind() {
+            io::ErrorKind::InvalidInput => {
+                assert!(true);
+            },
+             tokio::io::ErrorKind::InvalidData => {
+                assert!(true);
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+        match internal_message7 {
+            InternalMessage::KafkaProducerMessage(KafkaProducerMessage::Produce { topic, key, message }) => {
+                assert_eq!(topic, "test".to_string());
+                assert_eq!(key, "test".to_string());
+                assert_eq!(message, "test".to_string());
+            },
+            _ => {
+                assert!(false);
+            }
+        }
+
+    }
+
 }

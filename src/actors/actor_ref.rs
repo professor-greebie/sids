@@ -4,7 +4,7 @@ use log::{error, info };
 
 use crate::actors::{actor, messages::InternalMessage, guardian::Guardian};
 
-use super::messages::{self, ResponseMessage};
+use super::messages;
 
 type TokioSender = tokio::sync::mpsc::Sender<messages::InternalMessage>;
 type StdSender = std::sync::mpsc::Sender<messages::InternalMessage>;
@@ -122,11 +122,18 @@ pub(super) struct TokioActorRef {
 impl TokioActorRef {
     pub(super) fn new(actor: actor::Actor, snd: TokioSender) -> Self {
         match actor {
-            actor::Actor::Guardian(guardian) => {
-                info!(actor = "Guardian"; "Spawning guardian actor");
+            actor::Actor::Guardian(_guardian) => {
+                error!("Guardian actor should not be spawned as a regular Tokio actor.");
+                
+            },
+            actor::Actor::Collector(_collector) => {
+                error!("Collector actor should not be spawned as a regular Tokio actor. Use BlockingActorRef instead.");
+            },
+            actor::Actor::LogActor(log_actor) => {
+                info!(actor = "Log Actor"; "Spawning a Log actor");
                 tokio::spawn(async move {
-                    let mut guardian = guardian;
-                    guardian.run().await;
+                    let mut log_actor = log_actor;
+                    log_actor.run().await;
                 });
             },
             actor::Actor::KafkaProducerActor(kafka_actor) => {
@@ -144,15 +151,15 @@ impl TokioActorRef {
     }
 
     pub(super) async fn send(&mut self, message: &messages::InternalMessage) {
+
+        // Need a way to reduce the complexity of InternalMessages vis a vis the actors in the system.
         match message {
             messages::InternalMessage::KafkaProducerMessage(messages::KafkaProducerMessage::Produce {
                 topic,
                 key,
                 message,
-                responder: _,
             }) => {
                 info!(actor = "Kafka Producer"; "Producing Kafka message");
-                let (snd, _rec) = tokio::sync::oneshot::channel::<ResponseMessage>();
                 let _ = self
                     .sender
                     .send(messages::InternalMessage::KafkaProducerMessage(
@@ -160,19 +167,19 @@ impl TokioActorRef {
                             topic: topic.to_string(),
                             key: key.to_string(),
                             message: message.to_string(),
-                            responder: snd,
                         },
                     ))
                     .await;
-                _rec.await.expect("Actor was killed before send.");
             },
-            messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId) => {
+            messages::InternalMessage::LogMessage { message } => {
 
                 // send the responder or force the actor reference to send the response?
-                let (_snd, _rec) = tokio::sync::oneshot::channel::<ResponseMessage>();
-                let _ = self.sender.send(messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId)).await;
+                let msg = messages::InternalMessage::LogMessage {
+                    message: message.to_string(),
+                };
+                let _ = self.sender.send(msg).await;
                 // do something with the id;
-                _rec.await.expect("Actor was killed before send.");
+                // do we ever need a response from the logger?
             },
             messages::InternalMessage::Terminate => {
                 let _ = self.sender.send(messages::InternalMessage::Terminate).await;
@@ -203,7 +210,9 @@ mod tests {
         let actor = actor::Actor::LogActor(LogActor::new(rec));
         let mut actor_ref = TokioActorRef::new(actor, snd);
         // the message never uses the responder here. Should we change the message to not include the responder?
-        let message = messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId);
+        let message = messages::InternalMessage::LogMessage {
+            message: "Hello, world".to_string(),
+        };
         let _ = actor_ref.send(&message).await;
         let no_message = messages::InternalMessage::NoMessage;
         let _ = actor_ref.send(&no_message).await;

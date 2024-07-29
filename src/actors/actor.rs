@@ -38,15 +38,20 @@ pub (super) struct LogActor {
 impl ActorType for LogActor {
     async fn receive(&self, message: messages::InternalMessage) -> Result<(), Error> {
         match message {
-            messages::InternalMessage::ActorMessage(messages::ActorMessage::Terminate) => {
-                println!("Actor terminated");
+            messages::InternalMessage::LogMessage { message } => {
+                info!(actor = "LogActor"; "Log message: {} as per request.", message);
             },
-            messages::InternalMessage::ActorMessage(messages::ActorMessage::GetNextId) => {
-                //responder.send(1).unwrap();
-            }
             _ => {}
         }
         Ok(())
+    }
+}
+
+impl Default for LogActor {
+    fn default() -> Self {
+        LogActor {
+            _receiver: mpsc::channel(1).1,
+        }
     }
 }
 
@@ -130,7 +135,6 @@ impl Collector {
 }
 
 pub(super) struct CleaningActor {
-
     _receiver: mpsc::Receiver<messages::InternalMessage>,
 }
 
@@ -198,7 +202,6 @@ impl ActorType for KafkaProducerActor {
                 topic,
                 key,
                 message,
-                responder: _, 
             }) => {
                 info!("Producing message to topic {}", topic);
                 let broker_string = format!("{}:{}", self.broker_host, self.broker_port);
@@ -209,6 +212,7 @@ impl ActorType for KafkaProducerActor {
                 producer
                     .send(&Record::from_key_value(topic.as_str(), key.as_str(), message.as_bytes()))
                     .unwrap();
+                // do we ever need a response from the kafka producer?
             }
 
             _ => {}

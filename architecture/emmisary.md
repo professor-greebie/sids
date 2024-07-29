@@ -21,15 +21,18 @@ Non-blocking courriers use the Tokio library to handle sequencing and backpressu
 
 flowchart TD
     ActorSystem["Actor System"]
-    Guardian["Guardian"]
-    Office1["Officer"]
-    Office2["Officer"]
+    Guardian["fa:fa-user-shield Guardian"]
+    Office1["fa:fa-person-military-pointing Blocking Officer"]
+    Office2["fa:fa-person-military-pointing Officer"]
     ActorSystem --> Guardian
     Guardian --> Office1 & Office2
 
-    Courier1A[/"Courrier"/]
-    Courier1B[/"Courrier"/]
-    Courier1C[/"Courrier"/]
+    Courier1A[/"fa:fa-user-ninja Courrier"/]
+    Courier1B[/"fa:fa-user-ninja Courrier"/]
+    Courier1C[/"fa:fa-user-ninja Courrier"/]
+    Courier2A[/"fa:fa-user-ninja Courrier"/]
+    Courier2B[/"fa:fa-user-ninja Courrier"/]
+    Courier2C[/"fa:fa-user-ninja Courrier"/]
     Office1 <-.blocking broadcast-.-> Courier1A & Courier1B & Courier1C
     Office2 <-.broadcast-.-> Courier2A & Courier2B & Courier2C
 
@@ -59,7 +62,7 @@ In practical terms, it may be useful to give officers actor behaviors that corre
 
 ```mermaid
 
-flowchart TD
+flowchart BT
     ActorSystem["Actor System"]
     Guardian["fa:fa-user-shield Guardian"]
     GuardianActorRef["Guardian Actor Reference"]
@@ -68,28 +71,29 @@ flowchart TD
     UnzipCourrier["fa:fa-file-zipper fa:fa-user-ninja Unzip Courrier"]
     KafkaProducer["fa:fa-database fa:fa-user-ninja Kafka Producer Courrier"]
     XLSXReader["fa:fa-file-excel fa:fa-user-ninja XLSX Courrier"]
-    Serde["fa:fa-database fa:fa-user-ninja Serde Courrier"]
+    Serde["fa:fa-code fa:fa-user-ninja Serde Courrier"]
     
     ActorSystem -. send(GuardianMessage) ..-> GuardianActorRef
     
     subgraph guardian ["fa:fa-user-shield Guardian System"]
-    GuardianActorRef -. send .-> Guardian
+      GuardianActorRef -. send .-> Guardian
     end
     subgraph officer ["fa:fa-person-military-pointing Collection Officer"]
-    Guardian --send(Message) --> CollectionOfficer
-    CollectionOfficer -.-> CollectionOfficerActorRef -- send[InternalMessage] --> CollectionActor
+      Guardian --send(Message) --> CollectionOfficer
+      CollectionOfficer -.-> CollectionOfficerActorRef -- send[InternalMessage] --> CollectionActor
     end
     subgraph collection["fa:fa-user-ninja Collection Courriers"]
-    CollectionOfficer --> XSLXActorRef -- send[InternalMessage] --> XLSXReader
-    CollectionOfficer --> ZIPActorRef -- send[InternalMessage] --> UnzipCourrier
+      CollectionOfficer --> XSLXActorRef -- send[InternalMessage] --> XLSXReader
+      CollectionOfficer --> ZIPActorRef -- send[InternalMessage] --> UnzipCourrier
+      CollectionOfficer --> CSVActorRef -- send[InternalMessage] --> CSVCourrier
     end
     subgraph producerOfficer["fa:fa-person-military-pointing Producer Officer"]
-    Guardian -- send(Message) --> ProducerOfficer
-    ProducerOfficer --> ProducerOfficerActorRef -- send[InternalMessage] --> ProducerActor
+      Guardian -- send(Message) --> ProducerOfficer
+      ProducerOfficer --> ProducerOfficerActorRef -- send[InternalMessage] --> ProducerActor
     end
     subgraph producer["fa:fa-user-ninja Producer Courriers"]
-    ProducerOfficer --> SerdeActorRef -- send[InternalMessage] --> Serde
-    ProducerOfficer --> KafkaActorRef -- send[InternalMessage] --> KafkaProducer
+      ProducerOfficer --> SerdeActorRef -- send[InternalMessage] --> Serde
+      ProducerOfficer --> KafkaActorRef -- send[InternalMessage] --> KafkaProducer
     end
     CollectionActor -- response --> Guardian 
     ProducerActor -- response --> Guardian
