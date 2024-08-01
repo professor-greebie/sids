@@ -60,8 +60,23 @@ impl GuardianActorRef {
                         responder: tx,
                     })
                     .await;
-                responder.send(rx.await.unwrap()).unwrap();
-
+                let response = match rx.await {
+                        Ok(messages::ResponseMessage::Success) => {
+                            info!("Success");
+                            messages::ResponseMessage::Success
+                        }
+                        Ok(messages::ResponseMessage::Failure) => {
+                            error!("Failure");
+                            messages::ResponseMessage::Failure
+                        }
+                        _ => {
+                            error!("No response received");
+                            messages::ResponseMessage::Failure
+                        }
+                    
+                };
+                
+                responder.send(response).unwrap();
             },
             messages::GuardianMessage::RemoveOfficer { officer_id, responder } => {
                 let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();

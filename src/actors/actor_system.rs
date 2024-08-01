@@ -17,14 +17,17 @@ use log::info;
     /// ```rust
     /// use sids::actors::actor_system::ActorSystem;
     /// use sids::actors::messages::{Message, ResponseMessage};
+    /// use sids::actors::officer::SelectActor;
     /// 
     /// pub async fn run_system() {
     /// 
     ///     let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
 
     ///     let mut actor_system = ActorSystem::new();
-    ///     actor_system.dispatch(Message::GetId).await;
-    ///     actor_system.dispatch(Message::Terminate).await;
+    ///     
+    ///    actor_system.create_officer(SelectActor::LogActor).await.unwrap();
+    ///    actor_system.dispatch(0, Message::GetId).await;
+    ///     actor_system.dispatch(0, Message::Terminate).await;
     /// }
     /// 
     /// ```
@@ -82,10 +85,9 @@ impl ActorSystem {
         }
     }
 
-    pub async fn dispatch(&mut self, message: Message) {
+    pub async fn dispatch(&mut self, officer_id : u32, message: Message) {
         info!("Dispatching message to actor system");
-        let msg = GuardianMessage::Dispatch { officer_id: 1, message: message };
-        self.guardian_ref.send(msg).await;
+        self.guardian_ref.send(GuardianMessage::Dispatch { officer_id: officer_id, message: message }).await;
     }
 
     pub async fn add_courrier(&mut self, officer_id: u32, courrier_type: SelectActor) -> Result<(), Error> {
@@ -132,14 +134,16 @@ mod tests {
         // message responder is never used in the message. Should we change the message to not include the responder?
         let _message = messages::Message::GetId;
 
-        actor_system.dispatch(_message).await;
+        
+        actor_system.create_officer(SelectActor::LogActor).await.unwrap();
+        actor_system.dispatch(0, _message).await;
         assert!(actor_system.create_officer(SelectActor::LogActor).await.is_ok());
         assert!(actor_system.create_officer(SelectActor::Collector).await.is_ok());
         assert!(actor_system.create_officer(SelectActor::CleaningActor).await.is_ok());
         assert!(actor_system.create_officer(SelectActor::Guardian).await.is_err());
 
-        assert!(actor_system.add_courrier(1, SelectActor::Collector).await.is_ok());
-        actor_system.remove_officer(1).await.unwrap();
+        assert!(actor_system.add_courrier(0, SelectActor::Collector).await.is_ok());
+        actor_system.remove_officer(0).await.unwrap();
         //assert!(test);
 
 
