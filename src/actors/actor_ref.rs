@@ -11,6 +11,7 @@ type StdSender = std::sync::mpsc::Sender<messages::InternalMessage>;
 type GuardianSender = tokio::sync::mpsc::Sender<messages::GuardianMessage>;
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub(super) enum ActorRef {
     TokioActorRef(TokioActorRef),
     BlockingActorRef(BlockingActorRef),
@@ -31,7 +32,7 @@ impl GuardianActorRef {
         Self { sender: snd }
     }
 
-    pub(super) async fn send(&mut self, message: &messages::GuardianMessage) {
+    pub(super) async fn send(&mut self, message: messages::GuardianMessage) {
         match message {
             messages::GuardianMessage::Terminate => {
                 info!(actor = "Guardian"; "Terminating guardian actor");
@@ -45,13 +46,45 @@ impl GuardianActorRef {
                 let _ = self
                     .sender
                     .send(messages::GuardianMessage::Dispatch {
-                        officer_id: *officer_id,
+                        officer_id: officer_id,
                         message: message.clone(),
                     })
                     .await;
-            }
+            },
+            messages::GuardianMessage::CreateOfficer { officer_type, responder } => {
+                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
+                let _ = self
+                    .sender
+                    .send(messages::GuardianMessage::CreateOfficer {
+                        officer_type: officer_type,
+                        responder: tx,
+                    })
+                    .await;
+                responder.send(rx.await.unwrap()).unwrap();
+
+            },
+            messages::GuardianMessage::RemoveOfficer { officer_id, responder } => {
+                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
+                let _ = self.sender.send(messages::GuardianMessage::RemoveOfficer { officer_id: officer_id, responder: tx }).await;
+                responder.send(rx.await.unwrap()).unwrap();
+            }, 
+            messages::GuardianMessage::AddCourrier { officer_id, courrier_type, responder } => {
+                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
+                let _ = self.sender.send(messages::GuardianMessage::AddCourrier { officer_id: officer_id, courrier_type: courrier_type, responder: tx }).await;
+                responder.send(rx.await.unwrap()).unwrap();
+            },
+            messages::GuardianMessage::RemoveCourrier { officer_id, courrier_id, responder } => {
+                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
+                let _ = self.sender.send(messages::GuardianMessage::RemoveCourrier { officer_id: officer_id, courrier_id: courrier_id, responder: tx }).await;
+                responder.send(rx.await.unwrap()).unwrap();
+            },
+            messages::GuardianMessage::NoMessage => {
+                let _ = self.sender.send(messages::GuardianMessage::NoMessage).await;
+            },
+            #[allow(unreachable_patterns)]
+
             _ => {
-                error!("No message to send");
+                panic!("Unknown message sent to Guardian Actor. Please use actor_system and appropriate guardian actor message.");
             }
         }
     }
@@ -201,6 +234,7 @@ impl TokioActorRef {
                 // do something with the id;
                 // do we ever need a response from the logger?
             }
+            
             messages::InternalMessage::Terminate => {
                 let _ = self.sender.send(messages::InternalMessage::Terminate).await;
             }
@@ -232,9 +266,9 @@ mod tests {
             },
         };
         let message2 = messages::GuardianMessage::Terminate;
-        actor_ref.send(&message0).await;
-        actor_ref.send(&message1).await;
-        actor_ref.send(&message2).await;
+        actor_ref.send(message0).await;
+        actor_ref.send(message1).await;
+        actor_ref.send(message2).await;
         assert!(true);
     }
 

@@ -17,11 +17,28 @@ pub (super) struct Officer {
     pub (super) courriers: Vec<actor_ref::ActorRef>,    
 }
 
-impl Officer{
+impl Officer {
 
     pub async fn send(&mut self, message: messages::Message) {
-        // ought the officer act as an ActorRef or should it have an ActorRef itself
-        // or do we always pass a Message to the ActorRef and let the actor ref convert it?
+
+        match message {
+            messages::Message::Terminate => {
+                self.notify(&messages::InternalMessage::Terminate).await.expect("Failed to notify courriers.");
+                match self.actor {
+                    actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {
+                        blocking_actor_ref.send(&messages::InternalMessage::Terminate);
+                    },
+                    actor_ref::ActorRef::TokioActorRef(ref mut tokio_actor_ref) => {
+                        tokio_actor_ref.send(&messages::InternalMessage::Terminate).await;
+                }
+                }
+            }, 
+            _ => {}
+        }
+        // Decided to use factory methods to subscribe and unsubscribe courriers, instead of passing a message to the actor.
+        // This is because the actor should not be aware of the courriers, only the officer should be aware of the courriers.
+        // The principle here is that the officer has access to an actor that represents itself to perform officer tasks.
+        // but the officer may also decided to update the state of the courriers, which are actors themselves.
         match self.actor {
             actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {
                 blocking_actor_ref.send(&message.to_internal_message(None).unwrap());

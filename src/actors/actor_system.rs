@@ -29,7 +29,7 @@ use log::info;
     /// 
     /// ```
 pub struct ActorSystem {
-    guardian : GuardianActorRef,
+    guardian_ref : GuardianActorRef,
 }
 
 
@@ -48,20 +48,22 @@ impl ActorSystem {
         info!(actor = "guardian"; "Actor system created");
 
         ActorSystem {
-            guardian: actor_ref,
+            guardian_ref: actor_ref,
         }
     }
 
     pub async fn stop_system(&mut self) {
         info!("Stopping actor system");
         let msg = GuardianMessage::Terminate;
-        self.guardian.send(&msg).await;
+        self.guardian_ref.send(msg).await;
     }
 
     pub async fn create_officer(&mut self, actor_type: SelectActor) -> Result<(), Error> {
+
+        // Currently not working as expected. The guardian_ref is not responding to the message.
         let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
         let msg = GuardianMessage::CreateOfficer { officer_type: actor_type, responder: tx };
-        self.guardian.send(&msg).await;
+        self.guardian_ref.send(msg).await;
         match _rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
             Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to create officer")),
@@ -72,7 +74,7 @@ impl ActorSystem {
     pub async fn remove_officer(&mut self, officer_id: u32) -> Result<(), Error> {
         let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
         let msg = GuardianMessage::RemoveOfficer { officer_id, responder: tx };
-        self.guardian.send(&msg).await;
+        self.guardian_ref.send(msg).await;
         match _rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
             Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to remove officer")),
@@ -83,13 +85,13 @@ impl ActorSystem {
     pub async fn dispatch(&mut self, message: Message) {
         info!("Dispatching message to actor system");
         let msg = GuardianMessage::Dispatch { officer_id: 1, message: message };
-        self.guardian.send(&msg).await;
+        self.guardian_ref.send(msg).await;
     }
 
     pub async fn add_courrier(&mut self, officer_id: u32, courrier_type: SelectActor) -> Result<(), Error> {
         let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
         let msg = GuardianMessage::AddCourrier { officer_id, courrier_type, responder: tx };
-        self.guardian.send(&msg).await;
+        self.guardian_ref.send(msg).await;
         match _rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
             Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to add courrier")),
@@ -100,7 +102,7 @@ impl ActorSystem {
     pub async fn remove_courrier(&mut self, officer_id: u32) -> Result<(), Error> {
         let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
         let msg = GuardianMessage::RemoveCourrier { officer_id, courrier_id: 1, responder: tx };
-        self.guardian.send(&msg).await;
+        self.guardian_ref.send(msg).await;
         match _rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
             Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to remove courrier")),
@@ -118,20 +120,34 @@ impl ActorSystem {
 
 #[cfg(test)]
 mod tests {
+
     use crate::actors::messages;
 
     use super::*;
 
     #[tokio::test]
-    #[allow(dead_code)]
-    async fn test_actor_system_is_not_headless_when_started() {
+    async fn test_actor_system_started() {
         let mut actor_system = ActorSystem::new();
         //let (tx, _rx) = oneshot::channel<InternalMessage>();
         // message responder is never used in the message. Should we change the message to not include the responder?
         let _message = messages::Message::GetId;
 
         actor_system.dispatch(_message).await;
+        assert!(actor_system.create_officer(SelectActor::LogActor).await.is_ok());
+        assert!(actor_system.create_officer(SelectActor::Collector).await.is_ok());
+        assert!(actor_system.create_officer(SelectActor::CleaningActor).await.is_ok());
+        assert!(actor_system.create_officer(SelectActor::Guardian).await.is_err());
+
+        assert!(actor_system.add_courrier(1, SelectActor::Collector).await.is_ok());
+        actor_system.remove_officer(1).await.unwrap();
+        //assert!(test);
+
+
+        
+        //assert!(true);
+        actor_system.stop_system().await;
         assert!(true);
+
 
 
         //actor_system.dispatch(&message).await;

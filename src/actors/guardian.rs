@@ -31,7 +31,11 @@ impl Guardian {
                     officer.send(messages::Message::Terminate).await;
                 }
                 // TODO: Terminate all officers and their courriers.
-                info!("Guardian Actor terminated");
+                // Do we send a response here?
+                info!(actor="guardian";"Guardian Actor terminated");
+            }
+            messages::GuardianMessage::NoMessage => {
+                info!(actor="guardian"; "No message to send");
             }
             messages::GuardianMessage::Dispatch {
                 officer_id,
@@ -47,141 +51,140 @@ impl Guardian {
                 officer_type,
                 responder,
             } => {
+                // this should use the create_officer function where possible.
                 let officer_id = self.officers.len() as u32;
                 match officer_type {
                     SelectActor::Collector => {
                         let (blocking_snd, blocking_rec) =
                             std::sync::mpsc::channel::<messages::InternalMessage>();
-                        let collector_officer = Officer {
-                            _id: officer_id,
-                            _type: SelectActor::Collector,
-                            actor: actor_ref::ActorRef::BlockingActorRef(BlockingActorRef::new(
-                                actor::Actor::Collector(actor::Collector::new(blocking_rec)),
-                                blocking_snd,
-                            )?),
-                            courriers: Vec::new(),
+                        let collector_actor =
+                            actor::Actor::Collector(actor::Collector::new(blocking_rec));
+                        let _ = match BlockingActorRef::new(collector_actor, blocking_snd) {
+                            Ok(actor_ref) => {
+                                let officer = Officer {
+                                    _id: officer_id,
+                                    _type: SelectActor::Collector,
+                                    actor: actor_ref::ActorRef::BlockingActorRef(actor_ref),
+                                    courriers: Vec::new(),
+                                };
+                                self.officers.push(officer);
+                                responder.send(messages::ResponseMessage::Success).unwrap();
+                            }
+                            Err(_) => {
+                                responder.send(messages::ResponseMessage::Failure).unwrap();
+                            }
                         };
-                        self.officers.push(collector_officer);
-                        responder
-                            .send(messages::ResponseMessage::Success,
-                            )
-                            .unwrap();
                     }
                     SelectActor::CleaningActor => {
                         let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(
                             super::SIDS_DEFAULT_BUFFER_SIZE,
                         );
-
-                        let cleaning_officer = Officer {
-                            _id: officer_id,
-                            _type: SelectActor::CleaningActor,
-                            actor: actor_ref::ActorRef::TokioActorRef(TokioActorRef::new(
-                                actor::Actor::CleaningActor(actor::CleaningActor::new(rec)),
-                                snd,
-                            ).expect("Failed to create tokio actor ref")),
-                            courriers: Vec::new(),
+                        let actor = actor::Actor::CleaningActor(actor::CleaningActor::new(rec));
+                        let _ = match TokioActorRef::new(actor, snd) {
+                            Ok(actor_ref) => {
+                                let officer = Officer {
+                                    _id: officer_id,
+                                    _type: SelectActor::CleaningActor,
+                                    actor: actor_ref::ActorRef::TokioActorRef(actor_ref),
+                                    courriers: Vec::new(),
+                                };
+                                self.officers.push(officer);
+                                responder.send(messages::ResponseMessage::Success).unwrap();
+                            }
+                            Err(_) => {
+                                responder.send(messages::ResponseMessage::Failure).unwrap();
+                            }
                         };
-                        self.officers.push(cleaning_officer);
-                        responder
-                            .send(messages::ResponseMessage::Success,
-                            )
-                            .unwrap();
                     }
                     SelectActor::KafkaProducerActor => {
-                        responder
-                            .send(messages::ResponseMessage::Success,
-                            )
-                            .unwrap();
+                        let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(
+                            super::SIDS_DEFAULT_BUFFER_SIZE,
+                        );
+                        // what to do if port and/or host are specified?
+                        let actor = actor::Actor::KafkaProducerActor(
+                            actor::KafkaProducerActor::new(rec, None, None),
+                        );
+                        let _ = match TokioActorRef::new(actor, snd) {
+                            Ok(actor_ref) => {
+                                let officer = Officer {
+                                    _id: officer_id,
+                                    _type: SelectActor::KafkaProducerActor,
+                                    actor: actor_ref::ActorRef::TokioActorRef(actor_ref),
+                                    courriers: Vec::new(),
+                                };
+                                self.officers.push(officer);
+                                responder.send(messages::ResponseMessage::Success).unwrap();
+                            }
+                            Err(_) => {
+                                responder.send(messages::ResponseMessage::Failure).unwrap();
+                            }
+                        };
                     }
                     SelectActor::LogActor => {
                         let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(
                             super::SIDS_DEFAULT_BUFFER_SIZE,
                         );
-                        let log_actor = Officer {
-                            _id: officer_id,
-                            _type: SelectActor::LogActor,
-                            actor: actor_ref::ActorRef::TokioActorRef(TokioActorRef::new(
-                                actor::Actor::LogActor(actor::LogActor::new(rec)),
-                                snd,
-                            ).expect("Failed to create tokio actor ref")),
-                            courriers: Vec::new(),
+                        let actor = actor::Actor::LogActor(actor::LogActor::new(rec));
+                        let _ = match TokioActorRef::new(actor, snd) {
+                            Ok(actor_ref) => {
+                                let officer = Officer {
+                                    _id: officer_id,
+                                    _type: SelectActor::LogActor,
+                                    actor: actor_ref::ActorRef::TokioActorRef(actor_ref),
+                                    courriers: Vec::new(),
+                                };
+                                self.officers.push(officer);
+                                responder.send(messages::ResponseMessage::Success).unwrap();
+                            }
+                            Err(_) => {
+                                responder.send(messages::ResponseMessage::Failure).unwrap();
+                            }
                         };
-                        self.officers.push(log_actor);
-                        responder
-                            .send(messages::ResponseMessage::Success,
-                            )
-                            .unwrap();
                     }
                     _ => {
-                        responder
-                            .send(messages::ResponseMessage::Failure,
-                            )
-                            .unwrap();
+                        responder.send(messages::ResponseMessage::Failure).unwrap();
                     }
                 }
             }
             messages::GuardianMessage::RemoveOfficer {
                 officer_id,
                 responder,
-            } => {
-                match self.remove_officer(officer_id) {
-                    Ok(_) => {
-                        responder
-                            .send(messages::ResponseMessage::Success,
-                            )
-                            .unwrap();
-                    }
-                    Err(_) => {
-                        responder
-                            .send(messages::ResponseMessage::Failure,
-                            )
-                            .unwrap();
-                    }
+            } => match self.remove_officer(officer_id) {
+                Ok(_) => {
+                    responder.send(messages::ResponseMessage::Success).unwrap();
+                }
+                Err(_) => {
+                    responder.send(messages::ResponseMessage::Failure).unwrap();
                 }
             },
             messages::GuardianMessage::AddCourrier {
                 officer_id,
                 courrier_type,
                 responder,
-            } => {
-                match self.add_courrier(officer_id, courrier_type) {
-                    Ok(_) => {
-                        responder
-                            .send(messages::ResponseMessage::Success,
-                            )
-                            .unwrap();
-                    }
-                    Err(_) => {
-                        responder
-                            .send(messages::ResponseMessage::Failure,
-                            )
-                            .unwrap();
-                    }
+            } => match self.add_courrier(officer_id, courrier_type) {
+                Ok(_) => {
+                    responder.send(messages::ResponseMessage::Success).unwrap();
                 }
-
+                Err(_) => {
+                    responder.send(messages::ResponseMessage::Failure).unwrap();
+                }
             },
             messages::GuardianMessage::RemoveCourrier {
                 officer_id,
                 courrier_id,
                 responder,
-            } => {
-                match self.remove_courrier(officer_id, courrier_id) {
-                    Ok(_) => {
-                        responder
-                            .send(messages::ResponseMessage::Success,
-                            )
-                            .unwrap();
-                    }
-                    Err(_) => {
-                        responder
-                            .send(messages::ResponseMessage::Failure,
-                            )
-                            .unwrap();
-                    }
+            } => match self.remove_courrier(officer_id, courrier_id) {
+                Ok(_) => {
+                    responder.send(messages::ResponseMessage::Success).unwrap();
+                }
+                Err(_) => {
+                    responder.send(messages::ResponseMessage::Failure).unwrap();
                 }
             },
+
+            #[allow(unreachable_patterns)]
             _ => {
-                info!("No message to send");
+                info!(actor="guardian"; "No message to send");
             }
         }
 
@@ -230,17 +233,50 @@ impl OfficerFactory for Guardian {
                 let cleaning_officer = Officer {
                     _id: 2,
                     _type: SelectActor::CleaningActor,
-                    actor: actor_ref::ActorRef::TokioActorRef(TokioActorRef::new(
-                        actor::Actor::CleaningActor(actor::CleaningActor::new(rec)),
-                        snd,
-                    ).expect("Failed to create tokio actor ref")),
+                    actor: actor_ref::ActorRef::TokioActorRef(
+                        TokioActorRef::new(
+                            actor::Actor::CleaningActor(actor::CleaningActor::new(rec)),
+                            snd,
+                        )
+                        .expect("Failed to create tokio actor ref"),
+                    ),
                     courriers: Vec::new(),
                 };
                 self.officers.push(cleaning_officer);
                 return Ok(());
             }
-            SelectActor::KafkaProducerActor => Ok(()),
-            SelectActor::LogActor => Ok(()),
+            SelectActor::KafkaProducerActor => {
+                // need perhaps to include the host and the port for kafka
+                let kafka_actor = Officer {
+                    _id: 4,
+                    _type: SelectActor::KafkaProducerActor,
+                    actor: actor_ref::ActorRef::TokioActorRef(
+                        TokioActorRef::new(
+                            actor::Actor::KafkaProducerActor(actor::KafkaProducerActor::new(
+                                rec, None, None,
+                            )),
+                            snd,
+                        )
+                        .expect("Failed to create tokio actor ref"),
+                    ),
+                    courriers: Vec::new(),
+                };
+                self.officers.push(kafka_actor);
+                return Ok(());
+            }
+            SelectActor::LogActor => {
+                let log_actor = Officer {
+                    _id: 3,
+                    _type: SelectActor::LogActor,
+                    actor: actor_ref::ActorRef::TokioActorRef(
+                        TokioActorRef::new(actor::Actor::LogActor(actor::LogActor::new(rec)), snd)
+                            .expect("Failed to create tokio actor ref"),
+                    ),
+                    courriers: Vec::new(),
+                };
+                self.officers.push(log_actor);
+                return Ok(());
+            }
         }
     }
 
@@ -254,9 +290,85 @@ impl OfficerFactory for Guardian {
         Err(Error::new(ErrorKind::NotFound, "Officer not found."))
     }
 
-    fn add_courrier(&mut self, _officer_id: u32, _courrier_type: SelectActor) -> Result<(), Error> {
-        Err(Error::new(ErrorKind::InvalidInput, "Not implemented."))
+    fn add_courrier(&mut self, officer_id: u32, courrier_type: SelectActor) -> Result<(), Error> {
+        let officer = self.officers.get_mut(officer_id as usize).unwrap();
+        let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(
+            super::SIDS_DEFAULT_BUFFER_SIZE,
+        );
+        match courrier_type {
+            SelectActor::Guardian => {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "Cannot create guardian officer outside of ActorSystem.",
+                ));
+            },
+            SelectActor::CleaningActor => {
+                let actor = actor::Actor::CleaningActor(actor::CleaningActor::new(rec));
+                match actor_ref::TokioActorRef::new(actor, snd) {
+                    Ok(actor_ref) => {
+                        officer.subscribe(actor_ref::ActorRef::TokioActorRef(actor_ref));
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "Failed to create actor ref.",
+                        ));
+                    }
+                }
+            },
+            SelectActor::Collector => {
+                let (blocking_snd, blocking_rec) =
+                    std::sync::mpsc::channel::<messages::InternalMessage>();
+                let actor = actor::Actor::Collector(actor::Collector::new(blocking_rec));
+                match actor_ref::BlockingActorRef::new(actor, blocking_snd) {
+                    Ok(actor_ref) => {
+                        officer.subscribe(actor_ref::ActorRef::BlockingActorRef(actor_ref));
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "Failed to create actor ref.",
+                        ));
+                    }
+                }
+            },
+            SelectActor::KafkaProducerActor => {
+                let actor = actor::Actor::KafkaProducerActor(actor::KafkaProducerActor::new(
+                    rec, None, None,
+                ));
+                match actor_ref::TokioActorRef::new(actor, snd) {
+                    Ok(actor_ref) => {
+                        officer.subscribe(actor_ref::ActorRef::TokioActorRef(actor_ref));
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "Failed to create actor ref.",
+                        ));
+                    }
+                }
+            },
+            SelectActor::LogActor => {
+                let actor = actor::Actor::LogActor(actor::LogActor::new(rec));
+                let _ = match actor_ref::TokioActorRef::new(actor, snd) {
+                    Ok(actor_ref) => {
+                        officer.subscribe(actor_ref::ActorRef::TokioActorRef(actor_ref));
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "Failed to create actor ref.",
+                        ));
+                    }
+                };
+            },
+        }
     }
+
     fn remove_courrier(&mut self, officer_id: u32, courrier_id: u32) -> Result<(), Error> {
         for officer in self.officers.iter_mut() {
             if officer._id == officer_id {
@@ -264,7 +376,6 @@ impl OfficerFactory for Guardian {
             }
         }
         Err(Error::new(ErrorKind::NotFound, "Officer not found."))
-    
     }
 }
 
@@ -288,10 +399,11 @@ mod tests {
         guardian
             .create_officer(SelectActor::KafkaProducerActor)
             .expect("Failed to create officer.");
+        // Let's test this properly.
         guardian
             .create_officer(SelectActor::LogActor)
             .expect("Failed to create officer.");
-        assert!(guardian.officers.len() == 2);
+        assert!(guardian.officers.len() == 4);
         guardian
             .remove_officer(1)
             .expect("Failed to remove officer.");
@@ -317,9 +429,8 @@ mod tests {
             })
             .await
             .expect("Failed to get next id.");
-        assert_eq!(
-            rx.await.unwrap(),
-            ResponseMessage::Success
-        );
+        assert_eq!(rx.await.unwrap(), ResponseMessage::Success);
     }
+
+
 }
