@@ -191,7 +191,6 @@ pub(super) enum GuardianMessage {
 
 #[derive(Debug)]
 pub enum CleaningActorMessage {
-    Terminate,
     Clean { location: String },
 }
 
@@ -200,7 +199,6 @@ pub enum CleaningActorMessage {
 /// Collectors are actors that are responsible for getting URIs and writing them to a file.
 #[derive(Debug)]
 pub enum CollectorMessage {
-    Terminate,
     GetURITemplate {
         uri: String,
         location: String,
@@ -215,7 +213,6 @@ pub enum CollectorMessage {
 /// Messages to communicate to Kafka Producers.
 #[derive(Debug)]
 pub enum KafkaProducerMessage {
-    Terminate,
     Produce {
         topic: String,
         key: String,

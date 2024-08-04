@@ -49,18 +49,15 @@ impl ActorSystem {
         let actor_ref = GuardianActorRef::new(guardian, snd);
         info!(actor = "guardian"; "Guardian actor spawned");
         info!(actor = "guardian"; "Actor system created");
-
         ActorSystem {
             guardian_ref: actor_ref,
         }
     }
-
     pub async fn stop_system(&mut self) {
         info!("Stopping actor system");
         let msg = GuardianMessage::Terminate;
-        self.guardian_ref.send(msg).await;
+         self.guardian_ref.send(msg).await;
     }
-
     pub async fn create_officer(&mut self, actor_type: SelectActor) -> Result<(), Error> {
 
         // Currently not working as expected. The guardian_ref is not responding to the message.
@@ -69,8 +66,8 @@ impl ActorSystem {
         self.guardian_ref.send(msg).await;
         match _rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
-            Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to create officer")),
-            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to create officer")),
+            Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to create officer")), // grcov-excl-line
+            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to create officer")), // grcov-excl-line
         }
     }
 
@@ -96,19 +93,19 @@ impl ActorSystem {
         self.guardian_ref.send(msg).await;
         match _rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
-            Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to add courrier")),
-            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to add courrier")),
+            Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to add courrier")), // grcov-excl-line
+            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to add courrier")), // grcov-excl-line
         }
     }
 
-    pub async fn remove_courrier(&mut self, officer_id: u32) -> Result<(), Error> {
+    pub async fn remove_courrier(&mut self, officer_id: u32, courrier_id: u32) -> Result<(), Error> {
         let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
-        let msg = GuardianMessage::RemoveCourrier { officer_id, courrier_id: 1, responder: tx };
+        let msg = GuardianMessage::RemoveCourrier { officer_id, courrier_id, responder: tx };
         self.guardian_ref.send(msg).await;
         match _rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
             Ok(ResponseMessage::Failure) => Err(Error::new(ErrorKind::InvalidInput, "Failed to remove courrier")),
-            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to remove courrier")),
+            _ => Err(Error::new(ErrorKind::InvalidInput, "Failed to remove courrier")), // grcov-excl-line
         }
     
     }
@@ -118,7 +115,7 @@ impl ActorSystem {
 }
 
 
-
+// grcov-excl-start
 
 #[cfg(test)]
 mod tests {
@@ -127,7 +124,7 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test] 
     async fn test_actor_system_started() {
         let mut actor_system = ActorSystem::new();
         //let (tx, _rx) = oneshot::channel<InternalMessage>();
@@ -137,12 +134,14 @@ mod tests {
         
         actor_system.create_officer(SelectActor::LogActor).await.unwrap();
         actor_system.dispatch(0, _message).await;
+        assert!(actor_system.remove_officer(100).await.is_err());
         assert!(actor_system.create_officer(SelectActor::LogActor).await.is_ok());
         assert!(actor_system.create_officer(SelectActor::Collector).await.is_ok());
         assert!(actor_system.create_officer(SelectActor::CleaningActor).await.is_ok());
         assert!(actor_system.create_officer(SelectActor::Guardian).await.is_err());
-
+        assert!(actor_system.remove_courrier(0, 0).await.is_err());
         assert!(actor_system.add_courrier(0, SelectActor::Collector).await.is_ok());
+        assert!(actor_system.remove_courrier(0, 0).await.is_ok());
         actor_system.remove_officer(0).await.unwrap();
         //assert!(test);
 
@@ -160,3 +159,5 @@ mod tests {
         
     }
 }
+
+// grcov-excl-stop

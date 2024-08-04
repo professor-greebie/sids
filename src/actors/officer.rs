@@ -90,6 +90,8 @@ impl Officer {
 
 }
 
+
+// grcov-excl-start
 #[cfg(test)]
 mod tests {
     use crate::actors::actor::{Actor, CleaningActor, Collector};
@@ -136,3 +138,5 @@ mod tests {
     }
 
 }
+
+// grcov-excl-stop

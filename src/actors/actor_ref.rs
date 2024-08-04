@@ -90,7 +90,7 @@ impl GuardianActorRef {
             },
             messages::GuardianMessage::RemoveCourrier { officer_id, courrier_id, responder } => {
                 let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
-                let _ = self.sender.send(messages::GuardianMessage::RemoveCourrier { officer_id: officer_id, courrier_id: courrier_id, responder: tx }).await;
+                let _ = self.sender.send(messages::GuardianMessage::RemoveCourrier { officer_id, courrier_id, responder: tx }).await;
                 responder.send(rx.await.unwrap()).unwrap();
             },
             messages::GuardianMessage::NoMessage => {
@@ -260,6 +260,7 @@ impl TokioActorRef {
     }
 }
 
+// grcov-excl-start
 #[cfg(test)]
 mod tests {
     use std::io::ErrorKind;
@@ -351,3 +352,5 @@ mod tests {
         assert!(TokioActorRef::new(collector, falsesend2).is_err());
     }
 }
+
+// grcov-excl-stop

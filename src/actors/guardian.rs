@@ -237,6 +237,9 @@ impl OfficerFactory for Guardian {
     }
 
     fn remove_officer(&mut self, officer_id: u32) -> Result<(), Error> {
+        if officer_id > self.officers.len() as u32 {
+            return Err(Error::new(ErrorKind::NotFound, "Officer not found."));
+        }
         for (index, officer) in self.officers.iter().enumerate() {
             if officer._id == officer_id {
                 self.officers.remove(index);
@@ -343,11 +346,21 @@ impl OfficerFactory for Guardian {
                 ));
             }
         };
-        officer.unsubscribe(courrier_id);
+        
+        if courrier_id + 1 > (officer.courriers.len()) as u32 {
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                format!("No Courrier found with id {}.", courrier_id),
+            ));
+        } else {
+            officer.unsubscribe(courrier_id);
+        }
+        
         Ok(())
     }
 }
 
+// grcov-excl-start
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,6 +399,8 @@ mod tests {
             .create_officer(SelectActor::Guardian)
             .expect_err("Cannot create guardian officer outside of ActorSystem.");
     }
+
+    
 
     #[tokio::test]
     async fn test_guardian_actor_get_next_id() {
@@ -505,3 +520,5 @@ mod tests {
         assert!(guardian.officers[0].courriers.len() == 3);
     }
 }
+
+// grcov-excl-stop
