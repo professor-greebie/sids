@@ -42,7 +42,7 @@ impl GuardianActorRef {
                 officer_id,
                 message,
             } => {
-                info!(actor = "Guardian"; "Dispatching message to officer");
+                info!(actor = "Guardian"; "Dispatching message to officer {}", officer_id);
                 let _ = self
                     .sender
                     .send(messages::GuardianMessage::Dispatch {
@@ -50,8 +50,12 @@ impl GuardianActorRef {
                         message: message.clone(),
                     })
                     .await;
-            },
-            messages::GuardianMessage::CreateOfficer { officer_type, responder } => {
+            }
+            messages::GuardianMessage::CreateOfficer {
+                officer_type,
+                responder,
+            } => {
+                info!(actor = "Guardian"; "Creating officer");
                 let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
                 let _ = self
                     .sender
@@ -61,45 +65,74 @@ impl GuardianActorRef {
                     })
                     .await;
                 let response = match rx.await {
-                        Ok(messages::ResponseMessage::Success) => {
-                            info!("Success");
-                            messages::ResponseMessage::Success
-                        }
-                        Ok(messages::ResponseMessage::Failure) => {
-                            error!("Failure");
-                            messages::ResponseMessage::Failure
-                        }
-                        _ => {
-                            error!("No response received");
-                            messages::ResponseMessage::Failure
-                        }
-                    
+                    Ok(messages::ResponseMessage::Success) => {
+                        info!("Success");
+                        messages::ResponseMessage::Success
+                    }
+                    Ok(messages::ResponseMessage::Failure) => {
+                        error!("Failure");
+                        messages::ResponseMessage::Failure
+                    }
+                    _ => {
+                        error!("No response received");
+                        messages::ResponseMessage::Failure
+                    }
                 };
-                
-                responder.send(response).unwrap();
-            },
-            messages::GuardianMessage::RemoveOfficer { officer_id, responder } => {
-                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
-                let _ = self.sender.send(messages::GuardianMessage::RemoveOfficer { officer_id: officer_id, responder: tx }).await;
-                responder.send(rx.await.unwrap()).unwrap();
-            }, 
-            messages::GuardianMessage::AddCourrier { officer_id, courrier_type, responder } => {
-                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
-                let _ = self.sender.send(messages::GuardianMessage::AddCourrier { officer_id: officer_id, courrier_type: courrier_type, responder: tx }).await;
-                responder.send(rx.await.unwrap()).unwrap();
-            },
-            messages::GuardianMessage::RemoveCourrier { officer_id, courrier_id, responder } => {
-                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
-                let _ = self.sender.send(messages::GuardianMessage::RemoveCourrier { officer_id, courrier_id, responder: tx }).await;
-                responder.send(rx.await.unwrap()).unwrap();
-            },
-            messages::GuardianMessage::NoMessage => {
-                let _ = self.sender.send(messages::GuardianMessage::NoMessage).await;
-            },
-            #[allow(unreachable_patterns)]
 
-            _ => {
-                panic!("Unknown message sent to Guardian Actor. Please use actor_system and appropriate guardian actor message.");
+                responder.send(response).unwrap();
+            }
+            messages::GuardianMessage::RemoveOfficer {
+                officer_id,
+                responder,
+            } => {
+                info!(actor = "Guardian"; "Removing officer with id: {}", officer_id);
+                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
+                let _ = self
+                    .sender
+                    .send(messages::GuardianMessage::RemoveOfficer {
+                        officer_id: officer_id,
+                        responder: tx,
+                    })
+                    .await;
+                responder.send(rx.await.unwrap()).unwrap();
+            }
+            messages::GuardianMessage::AddCourrier {
+                officer_id,
+                courrier_type,
+                responder,
+            } => {
+                info!(actor = "Guardian"; "Adding courrier to officer with id: {}", officer_id);
+                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
+                let _ = self
+                    .sender
+                    .send(messages::GuardianMessage::AddCourrier {
+                        officer_id: officer_id,
+                        courrier_type: courrier_type,
+                        responder: tx,
+                    })
+                    .await;
+                responder.send(rx.await.unwrap()).unwrap();
+            }
+            messages::GuardianMessage::RemoveCourrier {
+                officer_id,
+                courrier_id,
+                responder,
+            } => {
+                info!(actor = "Guardian"; "Removing courrier with id: {} from officer with id: {}", courrier_id, officer_id);
+                let (tx, rx) = tokio::sync::oneshot::channel::<messages::ResponseMessage>();
+                let _ = self
+                    .sender
+                    .send(messages::GuardianMessage::RemoveCourrier {
+                        officer_id,
+                        courrier_id,
+                        responder: tx,
+                    })
+                    .await;
+                responder.send(rx.await.unwrap()).unwrap();
+            }
+            messages::GuardianMessage::NoMessage => {
+                info!(actor = "Guardian"; "No message (ping) sent to guardian actor.");
+                let _ = self.sender.send(messages::GuardianMessage::NoMessage).await;
             }
         }
     }
@@ -249,7 +282,7 @@ impl TokioActorRef {
                 // do something with the id;
                 // do we ever need a response from the logger?
             }
-            
+
             messages::InternalMessage::Terminate => {
                 let _ = self.sender.send(messages::InternalMessage::Terminate).await;
             }

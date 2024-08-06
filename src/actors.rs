@@ -1,56 +1,62 @@
 pub mod actor;
-pub mod officer;
 pub mod actor_ref;
 pub mod actor_system;
-pub mod messages;
 pub mod guardian;
-
+pub mod messages;
+pub mod officer;
 
 static SIDS_DEFAULT_BUFFER_SIZE: usize = 100;
 
-mod emmissary_system {
+pub mod api {
 
     use crate::actors::actor_system::ActorSystem;
 
-    use super::messages;
+    use super::officer::SelectActor;
 
-    #[allow(dead_code)]
     pub fn start_actor_system() -> ActorSystem {
         let actor_system = ActorSystem::new();
         actor_system
     }
-    #[allow(dead_code)]
-    pub fn spawn_actor(actor_system: &mut ActorSystem) -> &ActorSystem {
 
-        // This is a temporary solution to spawn actors. It should be replaced with a more robust solution.
+    pub async fn spawn_officer(
+        actor_system: &mut ActorSystem,
+        actor_type: SelectActor,
+    ) -> &mut ActorSystem {
+        let _ = actor_system
+            .create_officer(actor_type)
+            .await
+            .expect("Failed to create officer");
         actor_system
     }
-    #[allow(dead_code)]
-    pub fn spawn_collector(actor_system: &mut ActorSystem) -> &ActorSystem {
-        // This is a temporary solution to spawn actors. It should be replaced with a more robust solution.
+
+    pub async fn spawn_courrier(
+        actor_system: &mut ActorSystem,
+        officer_id: u32,
+        courrier_type: SelectActor,
+    ) -> &mut ActorSystem {
+        let _ = actor_system
+            .add_courrier(officer_id, courrier_type)
+            .await
+            .expect("Failed to add courrier");
         actor_system
     }
-    #[allow(dead_code)]
-    pub fn spawn_kafka_producer_actor(actor_system:  &mut ActorSystem) -> &ActorSystem {
-        // This is a temporary solution to spawn actors. It should be replaced with a more robust solution.
+
+    pub async fn terminate_actor_system(actor_system: &mut ActorSystem) -> &mut ActorSystem {
+        actor_system
+            .stop_system()
+            .await;
         actor_system
     }
-    #[allow(dead_code)]
-    pub fn next_actor_system(actor_system: &mut ActorSystem) -> &ActorSystem {
+
+    pub async fn send_message_to_officer (
+        actor_system: &mut ActorSystem,
+        officer_id: u32,
+        message: crate::actors::messages::Message,
+    ) -> &mut ActorSystem {
         actor_system
-    }
-    #[allow(dead_code)]
-    pub async fn send_message(_actor_system: &ActorSystem, _message: messages::InternalMessage) {
-    
-    }
-    #[allow(dead_code)]
-    pub fn send_get_request(_actor_system: &ActorSystem, _uri: String, _location: String) {
-    
-    }
-    #[allow(dead_code)]
-    pub fn describe_actor_system(_actor_system: &ActorSystem) {
-        log::info!(actor = "Actor System"; "hello");
-    
+            .dispatch(officer_id, message)
+            .await;
+        actor_system
     }
 
     #[cfg(test)]
@@ -59,8 +65,9 @@ mod emmissary_system {
 
         #[tokio::test]
         async fn test_actor_system() {
-            let _actor_system = start_actor_system();
-
+            let mut _actor_system = start_actor_system();
+            spawn_officer(&mut _actor_system, SelectActor::LogActor).await;
+            spawn_courrier(&mut _actor_system, 0, SelectActor::LogActor).await;
         }
     }
 }

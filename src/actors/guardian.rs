@@ -237,16 +237,19 @@ impl OfficerFactory for Guardian {
     }
 
     fn remove_officer(&mut self, officer_id: u32) -> Result<(), Error> {
-        if officer_id > self.officers.len() as u32 {
-            return Err(Error::new(ErrorKind::NotFound, "Officer not found."));
-        }
-        for (index, officer) in self.officers.iter().enumerate() {
-            if officer._id == officer_id {
-                self.officers.remove(index);
-                return Ok(());
+        let _ = match self.officers.get_mut(officer_id as usize) {
+            Some(officer) => officer,
+            None => {
+                return Err(Error::new(
+                    ErrorKind::NotFound,
+                    format!("No Officer found with id {}.", officer_id),
+                ));
             }
-        }
-        Err(Error::new(ErrorKind::NotFound, "Officer not found."))
+        };
+        // do we terminate the officer here?
+        //officer_to_remove.send(messages::Message::Terminate).await;
+        self.officers.remove(officer_id as usize);
+        Ok(())
     }
 
     fn add_courrier(&mut self, officer_id: u32, courrier_type: SelectActor) -> Result<(), Error> {
@@ -346,15 +349,17 @@ impl OfficerFactory for Guardian {
                 ));
             }
         };
+        let _ = match officer.courriers.get(courrier_id as usize) {
+            Some(_) => (),
+            None => {
+                return Err(Error::new(
+                    ErrorKind::NotFound,
+                    format!("No Courrier found with id {}.", courrier_id),
+                ));
+            }
+        };
         
-        if courrier_id + 1 > (officer.courriers.len()) as u32 {
-            return Err(Error::new(
-                ErrorKind::NotFound,
-                format!("No Courrier found with id {}.", courrier_id),
-            ));
-        } else {
-            officer.unsubscribe(courrier_id);
-        }
+        officer.unsubscribe(courrier_id);
         
         Ok(())
     }
