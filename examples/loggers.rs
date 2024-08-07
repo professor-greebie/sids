@@ -19,8 +19,12 @@ async fn start_sample_actor_system() {
     spawn_officer(&mut _actor_system, SelectActor::LogActor).await;
     spawn_officer(&mut _actor_system, SelectActor::LogActor).await;
     for i in 0..30 {
-        let actor = i % 3;
         std::thread::sleep(std::time::Duration::from_secs(4));
+        for j in 0..3 {
+            send_message_to_officer(&mut _actor_system, j, Message::LogMessage { message: "hello".to_string() }).await;
+        }
+        let actor = i % 3;
+        
         send_message_to_officer(&mut _actor_system, actor, Message::LogMessage { message: "hello".to_string() }).await;
     }
     

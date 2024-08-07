@@ -25,6 +25,7 @@ pub(super) enum Actor {
     LogActor(LogActor),
     CleaningActor(CleaningActor),
     KafkaProducerActor(KafkaProducerActor),
+    KafkaConsumerActor(KafkaConsumerActor),
     NotAnActor,
 }
 
@@ -114,9 +115,7 @@ impl Collector {
         info!("Getting URI {}", uri);
         info!("Writing to location {}", location);
         let res = reqwest::blocking::get(uri).unwrap().text().unwrap();
-        info! {"Body contains{}", res};
         self.write_to_file(res, location).unwrap();
-
         Ok(())
     }
 
@@ -253,6 +252,73 @@ impl KafkaProducerActor {
 
     pub(super) async fn run(&mut self) {
         info!(actor = "Kafka Producer"; "Running Kafka producer actor");
+        while let Some(message) = self.receiver.recv().await {
+            self.receive(message).await.unwrap();
+        }
+    }
+}
+
+pub(super) struct KafkaConsumerActor {
+    receiver: mpsc::Receiver<messages::InternalMessage>,
+    broker_host: String,
+    broker_port: String,
+}
+impl Default for KafkaConsumerActor {
+    fn default() -> Self {
+        KafkaConsumerActor {
+            receiver: mpsc::channel(1).1,
+            broker_host: "localhost".to_owned(),
+            broker_port: "29092".to_owned(),
+        }
+    }
+}
+
+impl ActorType for KafkaConsumerActor {
+    async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
+        match message {
+            messages::InternalMessage::Terminate => {
+                println!("Actor terminated");
+                self.receiver.close();
+                return Err(Error::new(std::io::ErrorKind::Other, "Actor terminated"));
+            }
+            messages::InternalMessage::KafkaConsumerMessage(
+                messages::KafkaConsumerMessage::Consume { topic, group: _ },
+            ) => {
+                let broker_string = format!("{}:{}", self.broker_host, self.broker_port);
+                let mut consumer = kafka::consumer::Consumer::from_hosts(vec![broker_string])
+                    .with_topic(topic)
+                    .create()
+                    .unwrap();
+                // in the test environment, we don't want to consume messages from Kafka.
+                if cfg!(test) {
+                    return Ok(());
+                }
+                // grcov-excl-start
+                consumer.poll().unwrap();
+                // grcov-excl-stop
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+impl KafkaConsumerActor {
+    #[allow(dead_code)]
+    pub(super) fn new(
+        receiver: mpsc::Receiver<messages::InternalMessage>,
+        host: Option<String>,
+        port: Option<String>,
+    ) -> KafkaConsumerActor {
+        KafkaConsumerActor {
+            receiver: receiver,
+            broker_host: host.unwrap_or("localhost".to_string()),
+            broker_port: port.unwrap_or("29092".to_string()),
+        }
+    }
+
+    pub(super) async fn run(&mut self) {
+        info!(actor = "Kafka Consumer"; "Running Kafka consumer actor");
         while let Some(message) = self.receiver.recv().await {
             self.receive(message).await.unwrap();
         }

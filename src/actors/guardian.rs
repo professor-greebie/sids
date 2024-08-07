@@ -336,6 +336,23 @@ impl OfficerFactory for Guardian {
                     }
                 };
             }
+            SelectActor::KafkaConsumerActor => {
+                let actor = actor::Actor::KafkaConsumerActor(actor::KafkaConsumerActor::new(
+                    rec, None, None,
+                ));
+                match actor_ref::TokioActorRef::new(actor, snd) {
+                    Ok(actor_ref) => {
+                        officer.subscribe(actor_ref::ActorRef::TokioActorRef(actor_ref));
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "Failed to create actor ref.",
+                        ));
+                    }
+                }
+            },
         }
     }
 

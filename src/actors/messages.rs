@@ -130,6 +130,7 @@ pub enum InternalMessage {
     CollectorMessage(CollectorMessage),
     KafkaProducerMessage(KafkaProducerMessage),
     CleaningActorMessage(CleaningActorMessage),
+    KafkaConsumerMessage(KafkaConsumerMessage),
     GetId,
     NoMessage,
     Terminate,
@@ -217,6 +218,14 @@ pub enum KafkaProducerMessage {
         topic: String,
         key: String,
         message: String,
+    },
+}
+
+#[derive(Debug)]
+pub enum KafkaConsumerMessage {
+    Consume {
+        topic: String,
+        group: String,
     },
 }
 

@@ -60,7 +60,6 @@ impl ActorSystem {
     }
     pub async fn create_officer(&mut self, actor_type: SelectActor) -> Result<(), Error> {
 
-        // Currently not working as expected. The guardian_ref is not responding to the message.
         let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
         let msg = GuardianMessage::CreateOfficer { officer_type: actor_type, responder: tx };
         self.guardian_ref.send(msg).await;

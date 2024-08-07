@@ -240,6 +240,13 @@ impl TokioActorRef {
                     kafka_actor.run().await;
                 });
             }
+            actor::Actor::KafkaConsumerActor(kafka_actor) => {
+                info!(actor = "Kafka Consumer"; "Spawning a Kafka Consuming actor");
+                tokio::spawn(async move {
+                    let mut kafka_actor = kafka_actor;
+                    kafka_actor.run().await;
+                });
+            }
             _ => {
                 error!("Actor not found");
                 return Err(Error::new(
