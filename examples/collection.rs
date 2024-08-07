@@ -26,7 +26,7 @@ async fn start_sample_actor_system() {
             j,
             Message::GetURI {
                 uri: "http://www.example.com".to_string(),
-                location: "./tmp_example".to_string(),
+                location: format!("./tmp_example{}", j),
             },
         )
         .await;
