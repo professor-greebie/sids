@@ -1,4 +1,5 @@
 /target
 *.profraw
 tmp
+*_tmp
 llvm/*
