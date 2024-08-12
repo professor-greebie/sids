@@ -35,6 +35,12 @@ pub struct ActorSystem {
     guardian_ref : GuardianActorRef,
 }
 
+impl Default for ActorSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 
 impl ActorSystem {
     /// Create a new ActorSystem
@@ -83,7 +89,7 @@ impl ActorSystem {
 
     pub async fn dispatch(&mut self, officer_id : u32, message: Message) {
         info!("Dispatching message to actor system");
-        self.guardian_ref.send(GuardianMessage::Dispatch { officer_id: officer_id, message: message }).await;
+        self.guardian_ref.send(GuardianMessage::Dispatch { officer_id, message }).await;
     }
 
     pub async fn add_courrier(&mut self, officer_id: u32, courrier_type: SelectActor) -> Result<(), Error> {
@@ -131,12 +137,12 @@ mod tests {
         let _message = messages::Message::GetId;
 
         
-        actor_system.create_officer(SelectActor::LogActor).await.unwrap();
+        actor_system.create_officer(SelectActor::Logging).await.unwrap();
         actor_system.dispatch(0, _message).await;
         assert!(actor_system.remove_officer(100).await.is_err());
-        assert!(actor_system.create_officer(SelectActor::LogActor).await.is_ok());
+        assert!(actor_system.create_officer(SelectActor::Logging).await.is_ok());
         assert!(actor_system.create_officer(SelectActor::Collector).await.is_ok());
-        assert!(actor_system.create_officer(SelectActor::CleaningActor).await.is_ok());
+        assert!(actor_system.create_officer(SelectActor::Cleaner).await.is_ok());
         assert!(actor_system.create_officer(SelectActor::Guardian).await.is_err());
         assert!(actor_system.remove_courrier(0, 0).await.is_err());
         assert!(actor_system.add_courrier(0, SelectActor::Collector).await.is_ok());

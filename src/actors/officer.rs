@@ -13,11 +13,11 @@ use super::{actor_ref, messages};
 /// In the future, we may see another way of specifying the type of actor, but for now, this is the best way to do it.
 pub enum SelectActor {
     Guardian,
-    LogActor,
+    Logging,
     Collector,
-    CleaningActor,
-    KafkaProducerActor,
-    KafkaConsumerActor,
+    Cleaner,
+    KafkaProducer,
+    KafkaConsumer,
 }
 
 /// The Officer struct is an actor that controls a number of courriers in an actor system.
@@ -29,7 +29,7 @@ pub(super) struct Officer {
     pub(super) _id: u32,
     pub(super) _type: SelectActor,
     pub(super) actor: ActorRef,
-    pub(super) courriers: Vec<actor_ref::ActorRef>,
+    pub(super) courriers: Vec<ActorRef>,
 }
 
 impl Officer {
@@ -52,16 +52,12 @@ impl Officer {
                     }
                 }
             }
-            messages::Message::GetURI { uri, location } => match self.actor {
-                actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {
+            messages::Message::GetURI { uri, location } => {
+                if let actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) = self.actor {
                     blocking_actor_ref.send(&messages::InternalMessage::CollectorMessage(
-                        messages::CollectorMessage::GetURITemplate {
-                            uri: uri,
-                            location: location,
-                        },
+                        messages::CollectorMessage::GetURITemplate { uri, location },
                     ));
                 }
-                _ => {}
             },
             _ => match self.actor {
                 actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {
@@ -93,22 +89,16 @@ impl Officer {
     /// Send a message to all blocking courriers.
     pub fn notify_blocking_courriers(&mut self, message: &InternalMessage) {
         for courier in self.courriers.iter_mut() {
-            match courier {
-                actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) => {
-                    blocking_actor_ref.send(message);
-                }
-                _ => {}
+            if let actor_ref::ActorRef::BlockingActorRef(ref mut blocking_actor_ref) = courier {
+                blocking_actor_ref.send(message);
             }
         }
     }
     /// Send a message to all tokio (async)courriers.
     pub async fn notify_tokio_courriers(&mut self, message: &messages::InternalMessage) {
         for courier in self.courriers.iter_mut() {
-            match courier {
-                actor_ref::ActorRef::TokioActorRef(ref mut tokio_actor_ref) => {
-                    tokio_actor_ref.send(message).await;
-                }
-                _ => {}
+            if let actor_ref::ActorRef::TokioActorRef(ref mut tokio_actor_ref) = courier {
+                tokio_actor_ref.send(message).await;
             }
         }
     }
@@ -117,7 +107,7 @@ impl Officer {
 // grcov-excl-start
 #[cfg(test)]
 mod tests {
-    use crate::actors::actor::{Actor, CleaningActor, Collector};
+    use crate::actors::actor::{Actor, Cleaner, Collector};
 
     use super::*;
     use tokio::sync::mpsc;
@@ -130,13 +120,13 @@ mod tests {
             _id: 1,
             _type: SelectActor::Collector,
             actor: actor_ref::ActorRef::TokioActorRef(
-                actor_ref::TokioActorRef::new(Actor::CleaningActor(CleaningActor::new(rx)), _tx)
+                actor_ref::TokioActorRef::new(Actor::Cleaner(Cleaner::new(rx)), _tx)
                     .expect("Failed to create actor ref."),
             ),
             courriers: Vec::new(),
         };
         let actor_ref = actor_ref::ActorRef::TokioActorRef(
-            actor_ref::TokioActorRef::new(Actor::CleaningActor(CleaningActor::new(rx2)), _tx2)
+            actor_ref::TokioActorRef::new(Actor::Cleaner(Cleaner::new(rx2)), _tx2)
                 .expect("Failed to create actor ref."),
         );
         officer.subscribe(actor_ref);
@@ -169,7 +159,7 @@ mod tests {
         officer.subscribe(actor_ref);
         assert!(officer.courriers.len() == 1);
         let actor_ref_tokio = actor_ref::ActorRef::TokioActorRef(
-            actor_ref::TokioActorRef::new(Actor::CleaningActor(CleaningActor::new(rx3)), tx3)
+            actor_ref::TokioActorRef::new(Actor::Cleaner(Cleaner::new(rx3)), tx3)
                 .expect("Failed to create actor ref."),
         );
         officer.subscribe(actor_ref_tokio);

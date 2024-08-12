@@ -22,22 +22,22 @@ pub trait SyncActorType {
 pub(super) enum Actor {
     Guardian(Guardian),
     Collector(Collector),
-    LogActor(LogActor),
-    CleaningActor(CleaningActor),
-    KafkaProducerActor(KafkaProducerActor),
-    KafkaConsumerActor(KafkaConsumerActor),
-    NotAnActor,
+    Logging(Logging),
+    Cleaner(Cleaner),
+    KafkaProducer(KafkaProducer),
+    KafkaConsumer(KafkaConsumer),
+    None,
 }
 
-pub(super) struct LogActor {
+pub(super) struct Logging {
     _receiver: mpsc::Receiver<messages::InternalMessage>,
 }
 
-impl ActorType for LogActor {
+impl ActorType for Logging {
     async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
         match message {
             messages::InternalMessage::LogMessage { message } => {
-                info!(actor = "LogActor"; "Log message: {} as per request.", message);
+                info!(actor = "Logging"; "Log message: {} as per request.", message);
             }
             messages::InternalMessage::Terminate => {
                 println!("Actor terminated");
@@ -50,9 +50,9 @@ impl ActorType for LogActor {
     }
 }
 
-impl LogActor {
-    pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> LogActor {
-        LogActor {
+impl Logging {
+    pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> Logging {
+        Logging {
             _receiver: receiver,
         }
     }
@@ -99,7 +99,7 @@ impl Collector {
     // Collector requires spawn blocking in order to get the response from the reqwest::blocking::get method.
     pub(super) fn new(receiver: std::sync::mpsc::Receiver<messages::InternalMessage>) -> Collector {
         info!(actor = "Get Actor"; "Creating Get Actor");
-        Collector { receiver: receiver }
+        Collector { receiver }
     }
 
     pub(super) fn run(&mut self) {
@@ -130,11 +130,11 @@ impl Collector {
     }
 }
 
-pub(super) struct CleaningActor {
+pub(super) struct Cleaner {
     _receiver: mpsc::Receiver<messages::InternalMessage>,
 }
 
-impl ActorType for CleaningActor {
+impl ActorType for Cleaner {
     async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
         match message {
             messages::InternalMessage::Terminate => {
@@ -142,8 +142,8 @@ impl ActorType for CleaningActor {
                 self._receiver.close();
                 return Err(Error::new(std::io::ErrorKind::Other, "Actor terminated"));
             }
-            messages::InternalMessage::CleaningActorMessage(
-                messages::CleaningActorMessage::Clean { location },
+            messages::InternalMessage::CleanerMessage(
+                messages::CleanerMessage::Clean { location },
             ) => {
                 self.clean(location).expect("Failed to clean location");
             }
@@ -153,9 +153,9 @@ impl ActorType for CleaningActor {
     }
 }
 
-impl CleaningActor {
-    pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> CleaningActor {
-        CleaningActor {
+impl Cleaner {
+    pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> Cleaner {
+        Cleaner {
             _receiver: receiver,
         }
     }
@@ -176,15 +176,15 @@ impl CleaningActor {
     }
 }
 
-pub(super) struct KafkaProducerActor {
+pub(super) struct KafkaProducer {
     receiver: mpsc::Receiver<messages::InternalMessage>,
     broker_host: String,
     broker_port: String,
 }
 
-impl Default for KafkaProducerActor {
+impl Default for KafkaProducer {
     fn default() -> Self {
-        KafkaProducerActor {
+        KafkaProducer {
             receiver: mpsc::channel(1).1,
             broker_host: "localhost".to_owned(),
             broker_port: "29092".to_owned(),
@@ -192,7 +192,7 @@ impl Default for KafkaProducerActor {
     }
 }
 
-impl ActorType for KafkaProducerActor {
+impl ActorType for KafkaProducer {
     async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
         match message {
             messages::InternalMessage::Terminate => {
@@ -236,15 +236,14 @@ impl ActorType for KafkaProducerActor {
     }
 }
 
-impl KafkaProducerActor {
-    #[allow(dead_code)]
+impl KafkaProducer {
     pub(super) fn new(
         receiver: mpsc::Receiver<messages::InternalMessage>,
         host: Option<String>,
         port: Option<String>,
-    ) -> KafkaProducerActor {
-        KafkaProducerActor {
-            receiver: receiver,
+    ) -> KafkaProducer {
+        KafkaProducer {
+            receiver,
             broker_host: host.unwrap_or("localhost".to_string()),
             broker_port: port.unwrap_or("29092".to_string()),
         }
@@ -258,14 +257,14 @@ impl KafkaProducerActor {
     }
 }
 
-pub(super) struct KafkaConsumerActor {
+pub(super) struct KafkaConsumer {
     receiver: mpsc::Receiver<messages::InternalMessage>,
     broker_host: String,
     broker_port: String,
 }
-impl Default for KafkaConsumerActor {
+impl Default for KafkaConsumer {
     fn default() -> Self {
-        KafkaConsumerActor {
+        KafkaConsumer {
             receiver: mpsc::channel(1).1,
             broker_host: "localhost".to_owned(),
             broker_port: "29092".to_owned(),
@@ -273,7 +272,7 @@ impl Default for KafkaConsumerActor {
     }
 }
 
-impl ActorType for KafkaConsumerActor {
+impl ActorType for KafkaConsumer {
     async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
         match message {
             messages::InternalMessage::Terminate => {
@@ -303,15 +302,15 @@ impl ActorType for KafkaConsumerActor {
     }
 }
 
-impl KafkaConsumerActor {
+impl KafkaConsumer {
     #[allow(dead_code)]
     pub(super) fn new(
         receiver: mpsc::Receiver<messages::InternalMessage>,
         host: Option<String>,
         port: Option<String>,
-    ) -> KafkaConsumerActor {
-        KafkaConsumerActor {
-            receiver: receiver,
+    ) -> KafkaConsumer {
+        KafkaConsumer {
+            receiver,
             broker_host: host.unwrap_or("localhost".to_string()),
             broker_port: port.unwrap_or("29092".to_string()),
         }
@@ -334,7 +333,7 @@ mod tests {
     #[tokio::test]
     async fn test_log_actor_receives_standard_log_message() {
         let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        let mut actor = super::LogActor::new(rx);
+        let mut actor = super::Logging::new(rx);
         //actor.run().await;
         assert!(actor
             .receive(super::messages::InternalMessage::LogMessage {
@@ -378,8 +377,8 @@ mod tests {
     async fn test_kafka_producer() {
         let (_tx, rx) = tokio::sync::mpsc::channel(1);
         let mut actor =
-            KafkaProducerActor::new(rx, Some("localhost".to_string()), Some("29092".to_string()));
-        let mut actor2 = KafkaProducerActor::default();
+            KafkaProducer::new(rx, Some("localhost".to_string()), Some("29092".to_string()));
+        let mut actor2 = KafkaProducer::default();
         //actor.run().await;
 
         assert!(actor2
@@ -401,13 +400,13 @@ mod tests {
     #[tokio::test]
     async fn test_cleaning_actor() {
         let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        let mut actor = CleaningActor::new(rx);
+        let mut actor = Cleaner::new(rx);
         //actor.run().await;
 
         assert!(actor.clean("test".to_string()).is_ok());
         assert!(actor
-            .receive(super::messages::InternalMessage::CleaningActorMessage(
-                super::messages::CleaningActorMessage::Clean {
+            .receive(super::messages::InternalMessage::CleanerMessage(
+                super::messages::CleanerMessage::Clean {
                     location: "test".to_string()
                 }
             ))

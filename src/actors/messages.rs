@@ -49,23 +49,20 @@ impl Message {
         // maybe change this to return a result or an Option<InternalMessage> instead.
         match self {
             Message::Terminate => Ok(InternalMessage::Terminate),
-            Message::LogMessage { message } => Ok(InternalMessage::LogMessage { message: message }),
+            Message::LogMessage { message } => Ok(InternalMessage::LogMessage { message }),
             Message::LogMessageWithResponse { message } => {
-                match tx {
-                    None => {
-                        return Err(Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            "Cannot log message without a responder.",
-                        ))
-                    }
-                    _ => {}
+                if tx.is_none() {
+                    return Err(Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Cannot log message without a responder.",
+                    ));
                 }
                 Ok(InternalMessage::LogMessageWithResponse {
-                    message: message,
+                    message,
                     responder: tx.unwrap(),
                 })
             }
-            Message::TerminateById { id } => Ok(InternalMessage::TerminateById { id: id }),
+            Message::TerminateById { id } => Ok(InternalMessage::TerminateById { id }),
             Message::GetId => Ok(InternalMessage::GetId),
             Message::GetURI {
                 uri: _,
@@ -83,9 +80,9 @@ impl Message {
             } => {
                 Ok(InternalMessage::KafkaProducerMessage(
                     KafkaProducerMessage::Produce {
-                        topic: topic,
-                        key: key,
-                        message: message,
+                        topic,
+                        key,
+                        message,
                     },
                 ))
                 // Need to figure out how to handle the response message
@@ -101,17 +98,14 @@ impl Message {
         self,
         tx: Option<std::sync::mpsc::Sender<ResponseMessage>>,
     ) -> Result<InternalMessage, Error> {
-        match tx {
-            None => return self.to_internal_message(None),
-            _ => {}
-        }
+        if tx.is_none() { return self.to_internal_message(None) }
         match self {
             // maybe change this to return a result or an Option<InternalMessage> instead.
             Message::GetURI { uri, location } => {
                 Ok(InternalMessage::CollectorMessage(
                     CollectorMessage::GetURI {
-                        uri: uri,
-                        location: location,
+                        uri,
+                        location,
                         responder: tx.unwrap(),
                     },
                 ))
@@ -129,7 +123,7 @@ impl Message {
 pub enum InternalMessage {
     CollectorMessage(CollectorMessage),
     KafkaProducerMessage(KafkaProducerMessage),
-    CleaningActorMessage(CleaningActorMessage),
+    CleanerMessage(CleanerMessage),
     KafkaConsumerMessage(KafkaConsumerMessage),
     GetId,
     NoMessage,
@@ -148,7 +142,7 @@ pub enum InternalMessage {
 
 /// Response messages used by the actors to communicate back to the guardian actor.
 ///
-/// These messages are simplified so that they can be tested easily.
+/// These messages are simplified so that they can be tested easil
 #[derive(Debug, PartialEq)]
 pub enum ResponseMessage {
     NoMessage,
@@ -191,12 +185,12 @@ pub(super) enum GuardianMessage {
 }
 
 #[derive(Debug)]
-pub enum CleaningActorMessage {
+pub enum CleanerMessage {
     Clean { location: String },
 }
 
 /// Messages to communicate to Collectors.
-/// 
+///
 /// Collectors are actors that are responsible for getting URIs and writing them to a file.
 #[derive(Debug)]
 pub enum CollectorMessage {
@@ -223,10 +217,7 @@ pub enum KafkaProducerMessage {
 
 #[derive(Debug)]
 pub enum KafkaConsumerMessage {
-    Consume {
-        topic: String,
-        group: String,
-    },
+    Consume { topic: String, group: String },
 }
 
 #[cfg(test)]
@@ -288,16 +279,51 @@ mod tests {
             .unwrap();
         let internal_message9 = message8.to_internal_message(None).unwrap();
 
-        assert!(matches!(internal_message1, InternalMessage::LogMessage { message : _ }));
-        assert!(matches!(internal_message1a, InternalMessage::LogMessage { message : _  }));
-        assert!(matches!(internal_message2, InternalMessage::LogMessageWithResponse { message : _ , responder: _ }));
-        assert!(matches!(internal_message2a.kind(), io::ErrorKind::InvalidInput));
+        assert!(matches!(
+            internal_message1,
+            InternalMessage::LogMessage { message: _ }
+        ));
+        assert!(matches!(
+            internal_message1a,
+            InternalMessage::LogMessage { message: _ }
+        ));
+        assert!(matches!(
+            internal_message2,
+            InternalMessage::LogMessageWithResponse {
+                message: _,
+                responder: _
+            }
+        ));
+        assert!(matches!(
+            internal_message2a.kind(),
+            io::ErrorKind::InvalidInput
+        ));
         assert!(matches!(internal_message3, InternalMessage::Terminate));
-        assert!(matches!(internal_message4, InternalMessage::TerminateById { id: _  }));
+        assert!(matches!(
+            internal_message4,
+            InternalMessage::TerminateById { id: _ }
+        ));
         assert!(matches!(internal_message5, InternalMessage::GetId));
-        assert!(matches!(internal_message6, InternalMessage::CollectorMessage(CollectorMessage::GetURI { uri : _ , location: _, responder: _ })));
-        assert!(matches!(internal_message6a.kind(), io::ErrorKind::InvalidInput));
-        assert!(matches!(internal_message7, InternalMessage::KafkaProducerMessage(KafkaProducerMessage::Produce { topic: _ , key: _ , message: _  })));
+        assert!(matches!(
+            internal_message6,
+            InternalMessage::CollectorMessage(CollectorMessage::GetURI {
+                uri: _,
+                location: _,
+                responder: _
+            })
+        ));
+        assert!(matches!(
+            internal_message6a.kind(),
+            io::ErrorKind::InvalidInput
+        ));
+        assert!(matches!(
+            internal_message7,
+            InternalMessage::KafkaProducerMessage(KafkaProducerMessage::Produce {
+                topic: _,
+                key: _,
+                message: _
+            })
+        ));
         assert!(matches!(internal_message8, InternalMessage::NoMessage));
         assert!(matches!(internal_message9, InternalMessage::NoMessage));
     }

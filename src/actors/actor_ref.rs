@@ -46,7 +46,7 @@ impl GuardianActorRef {
                 let _ = self
                     .sender
                     .send(messages::GuardianMessage::Dispatch {
-                        officer_id: officer_id,
+                        officer_id,
                         message: message.clone(),
                     })
                     .await;
@@ -60,7 +60,7 @@ impl GuardianActorRef {
                 let _ = self
                     .sender
                     .send(messages::GuardianMessage::CreateOfficer {
-                        officer_type: officer_type,
+                        officer_type,
                         responder: tx,
                     })
                     .await;
@@ -90,7 +90,7 @@ impl GuardianActorRef {
                 let _ = self
                     .sender
                     .send(messages::GuardianMessage::RemoveOfficer {
-                        officer_id: officer_id,
+                        officer_id,
                         responder: tx,
                     })
                     .await;
@@ -106,8 +106,8 @@ impl GuardianActorRef {
                 let _ = self
                     .sender
                     .send(messages::GuardianMessage::AddCourrier {
-                        officer_id: officer_id,
-                        courrier_type: courrier_type,
+                        officer_id,
+                        courrier_type,
                         responder: tx,
                     })
                     .await;
@@ -219,28 +219,28 @@ impl TokioActorRef {
                 error!("Collector actor should not be spawned as a regular Tokio actor. Use BlockingActorRef instead.");
                 return Err(Error::new(std::io::ErrorKind::InvalidInput, "Collector actor should not be spawned as a regular Tokio actor. Use BlockingActorRef instead."));
             }
-            actor::Actor::LogActor(log_actor) => {
+            actor::Actor::Logging(log_actor) => {
                 info!(actor = "Log Actor"; "Spawning a Log actor");
                 tokio::spawn(async move {
                     let mut log_actor = log_actor;
                     log_actor.run().await;
                 });
             }
-            actor::Actor::CleaningActor(cleaning_actor) => {
+            actor::Actor::Cleaner(cleaning_actor) => {
                 info!(actor = "Cleaning Actor"; "Spawning a Cleaning actor");
                 tokio::spawn(async move {
                     let mut cleaning_actor = cleaning_actor;
                     cleaning_actor.run().await;
                 });
             }
-            actor::Actor::KafkaProducerActor(kafka_actor) => {
+            actor::Actor::KafkaProducer(kafka_actor) => {
                 info!(actor = "Kafka Producer"; "Spawning a Kafka Producing actor");
                 tokio::spawn(async move {
                     let mut kafka_actor = kafka_actor;
                     kafka_actor.run().await;
                 });
             }
-            actor::Actor::KafkaConsumerActor(kafka_actor) => {
+            actor::Actor::KafkaConsumer(kafka_actor) => {
                 info!(actor = "Kafka Consumer"; "Spawning a Kafka Consuming actor");
                 tokio::spawn(async move {
                     let mut kafka_actor = kafka_actor;
@@ -305,7 +305,7 @@ impl TokioActorRef {
 mod tests {
     use std::io::ErrorKind;
 
-    use actor::LogActor;
+    use actor::Logging;
 
     use super::*;
 
@@ -335,9 +335,9 @@ mod tests {
         let (snd_kafka, rec_kafka) = tokio::sync::mpsc::channel::<InternalMessage>(10);
         let (snd_nne, _rec_nne) = tokio::sync::mpsc::channel::<InternalMessage>(5);
         let kafka =
-            actor::Actor::KafkaProducerActor(actor::KafkaProducerActor::new(rec_kafka, None, None));
-        let actor = actor::Actor::LogActor(LogActor::new(rec));
-        let no_actor = actor::Actor::NotAnActor;
+            actor::Actor::KafkaProducer(actor::KafkaProducer::new(rec_kafka, None, None));
+        let actor = actor::Actor::Logging(Logging::new(rec));
+        let no_actor = actor::Actor::None;
         let mut actor_ref = TokioActorRef::new(actor, snd).unwrap();
         let mut kafka_ref = TokioActorRef::new(kafka, snd_kafka).unwrap();
         let actor_ref_no = TokioActorRef::new(no_actor, snd_nne).err().unwrap();
@@ -384,7 +384,7 @@ mod tests {
         let falsesend1 = tokio::sync::mpsc::channel::<InternalMessage>(10).0;
         let falsesend2 = tokio::sync::mpsc::channel::<InternalMessage>(10).0;
         let (_guardsnd, _guardrec) = tokio::sync::mpsc::channel::<messages::GuardianMessage>(10);
-        let actor = actor::Actor::NotAnActor;
+        let actor = actor::Actor::None;
         let guardian = actor::Actor::Guardian(Guardian::new(_guardrec));
         let collector = actor::Actor::Collector(actor::Collector::new(_rec));
         assert!(TokioActorRef::new(guardian, falsesend1).is_err());

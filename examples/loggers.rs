@@ -15,9 +15,9 @@ fn get_loggings() {
 async fn start_sample_actor_system() {
     let mut _actor_system = start_actor_system();
     //_actor_system.spawn_actor(SelectActor::GetActor);
-    spawn_officer(&mut _actor_system, SelectActor::LogActor).await;
-    spawn_officer(&mut _actor_system, SelectActor::LogActor).await;
-    spawn_officer(&mut _actor_system, SelectActor::LogActor).await;
+    spawn_officer(&mut _actor_system, SelectActor::Logging).await;
+    spawn_officer(&mut _actor_system, SelectActor::Logging).await;
+    spawn_officer(&mut _actor_system, SelectActor::Logging).await;
     for i in 0..30 {
         std::thread::sleep(std::time::Duration::from_secs(4));
         for j in 0..3 {

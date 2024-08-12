@@ -14,15 +14,14 @@ pub mod api {
     use super::officer::SelectActor;
 
     pub fn start_actor_system() -> ActorSystem {
-        let actor_system = ActorSystem::new();
-        actor_system
+        ActorSystem::new()
     }
 
     pub async fn spawn_officer(
         actor_system: &mut ActorSystem,
         actor_type: SelectActor,
     ) -> &mut ActorSystem {
-        let _ = actor_system
+        actor_system
             .create_officer(actor_type)
             .await
             .expect("Failed to create officer");
@@ -34,7 +33,7 @@ pub mod api {
         officer_id: u32,
         courrier_type: SelectActor,
     ) -> &mut ActorSystem {
-        let _ = actor_system
+        actor_system
             .add_courrier(officer_id, courrier_type)
             .await
             .expect("Failed to add courrier");
@@ -66,8 +65,8 @@ pub mod api {
         #[tokio::test]
         async fn test_actor_system() {
             let mut _actor_system = start_actor_system();
-            spawn_officer(&mut _actor_system, SelectActor::LogActor).await;
-            spawn_courrier(&mut _actor_system, 0, SelectActor::LogActor).await;
+            spawn_officer(&mut _actor_system, SelectActor::Logging).await;
+            spawn_courrier(&mut _actor_system, 0, SelectActor::Logging).await;
         }
     }
 }

@@ -116,7 +116,7 @@ impl Guardian {
 
     pub(super) fn new(receiver: mpsc::Receiver<messages::GuardianMessage>) -> Guardian {
         Guardian {
-            receiver: receiver,
+            receiver,
             officers: Vec::new(),
         }
     }
@@ -136,7 +136,7 @@ impl OfficerFactory for Guardian {
                 let (blocking_snd, blocking_rec) =
                     std::sync::mpsc::channel::<messages::InternalMessage>();
                 let collector_actor = actor::Actor::Collector(actor::Collector::new(blocking_rec));
-                let _ = match BlockingActorRef::new(collector_actor, blocking_snd) {
+                match BlockingActorRef::new(collector_actor, blocking_snd) {
                     Ok(actor_ref) => {
                         let officer = Officer {
                             _id: officer_id,
@@ -155,16 +155,16 @@ impl OfficerFactory for Guardian {
                 };
                 Ok(())
             }
-            SelectActor::CleaningActor => {
+            SelectActor::Cleaner=> {
                 let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(
                     super::SIDS_DEFAULT_BUFFER_SIZE,
                 );
-                let actor = actor::Actor::CleaningActor(actor::CleaningActor::new(rec));
-                let _ = match TokioActorRef::new(actor, snd) {
+                let actor = actor::Actor::Cleaner(actor::Cleaner::new(rec));
+                match TokioActorRef::new(actor, snd) {
                     Ok(actor_ref) => {
                         let officer = Officer {
                             _id: officer_id,
-                            _type: SelectActor::CleaningActor,
+                            _type: SelectActor::Cleaner,
                             actor: actor_ref::ActorRef::TokioActorRef(actor_ref),
                             courriers: Vec::new(),
                         };
@@ -179,19 +179,19 @@ impl OfficerFactory for Guardian {
                 };
                 Ok(())
             }
-            SelectActor::KafkaProducerActor => {
+            SelectActor::KafkaProducer => {
                 let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(
                     super::SIDS_DEFAULT_BUFFER_SIZE,
                 );
                 // what to do if port and/or host are specified?
-                let actor = actor::Actor::KafkaProducerActor(actor::KafkaProducerActor::new(
+                let actor = actor::Actor::KafkaProducer(actor::KafkaProducer::new(
                     rec, None, None,
                 ));
-                let _ = match TokioActorRef::new(actor, snd) {
+                match TokioActorRef::new(actor, snd) {
                     Ok(actor_ref) => {
                         let officer = Officer {
                             _id: officer_id,
-                            _type: SelectActor::KafkaProducerActor,
+                            _type: SelectActor::KafkaProducer,
                             actor: actor_ref::ActorRef::TokioActorRef(actor_ref),
                             courriers: Vec::new(),
                         };
@@ -206,16 +206,16 @@ impl OfficerFactory for Guardian {
                 };
                 Ok(())
             }
-            SelectActor::LogActor => {
+            SelectActor::Logging => {
                 let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(
                     super::SIDS_DEFAULT_BUFFER_SIZE,
                 );
-                let actor = actor::Actor::LogActor(actor::LogActor::new(rec));
-                let _ = match TokioActorRef::new(actor, snd) {
+                let actor = actor::Actor::Logging(actor::Logging::new(rec));
+                match TokioActorRef::new(actor, snd) {
                     Ok(actor_ref) => {
                         let officer = Officer {
                             _id: officer_id,
-                            _type: SelectActor::LogActor,
+                            _type: SelectActor::Logging,
                             actor: actor_ref::ActorRef::TokioActorRef(actor_ref),
                             courriers: Vec::new(),
                         };
@@ -231,7 +231,7 @@ impl OfficerFactory for Guardian {
                 Ok(())
             }
             _ => {
-                return Err(Error::new(ErrorKind::InvalidInput, "Invalid officer type."));
+                Err(Error::new(ErrorKind::InvalidInput, "Invalid officer type."))
             }
         }
     }
@@ -267,23 +267,23 @@ impl OfficerFactory for Guardian {
         );
         match courrier_type {
             SelectActor::Guardian => {
-                return Err(Error::new(
+                Err(Error::new(
                     ErrorKind::InvalidInput,
                     "Cannot create guardian officer outside of ActorSystem.",
-                ));
+                ))
             }
-            SelectActor::CleaningActor => {
-                let actor = actor::Actor::CleaningActor(actor::CleaningActor::new(rec));
+            SelectActor::Cleaner => {
+                let actor = actor::Actor::Cleaner(actor::Cleaner::new(rec));
                 match actor_ref::TokioActorRef::new(actor, snd) {
                     Ok(actor_ref) => {
                         officer.subscribe(actor_ref::ActorRef::TokioActorRef(actor_ref));
-                        return Ok(());
+                        Ok(())
                     }
                     Err(_) => {
-                        return Err(Error::new(
+                        Err(Error::new(
                             ErrorKind::InvalidInput,
                             "Failed to create actor ref.",
-                        ));
+                        ))
                     }
                 }
             }
@@ -294,62 +294,62 @@ impl OfficerFactory for Guardian {
                 match actor_ref::BlockingActorRef::new(actor, blocking_snd) {
                     Ok(actor_ref) => {
                         officer.subscribe(actor_ref::ActorRef::BlockingActorRef(actor_ref));
-                        return Ok(());
+                        Ok(())
                     }
                     Err(_) => {
-                        return Err(Error::new(
+                        Err(Error::new(
                             ErrorKind::InvalidInput,
                             "Failed to create actor ref.",
-                        ));
+                        ))
                     }
                 }
             }
-            SelectActor::KafkaProducerActor => {
-                let actor = actor::Actor::KafkaProducerActor(actor::KafkaProducerActor::new(
+            SelectActor::KafkaProducer => {
+                let actor = actor::Actor::KafkaProducer(actor::KafkaProducer::new(
                     rec, None, None,
                 ));
                 match actor_ref::TokioActorRef::new(actor, snd) {
                     Ok(actor_ref) => {
                         officer.subscribe(actor_ref::ActorRef::TokioActorRef(actor_ref));
-                        return Ok(());
+                        Ok(())
                     }
                     Err(_) => {
-                        return Err(Error::new(
+                        Err(Error::new(
                             ErrorKind::InvalidInput,
                             "Failed to create actor ref.",
-                        ));
+                        ))
                     }
                 }
             }
-            SelectActor::LogActor => {
-                let actor = actor::Actor::LogActor(actor::LogActor::new(rec));
-                let _ = match actor_ref::TokioActorRef::new(actor, snd) {
+            SelectActor::Logging => {
+                let actor = actor::Actor::Logging(actor::Logging::new(rec));
+                match actor_ref::TokioActorRef::new(actor, snd) {
                     Ok(actor_ref) => {
                         officer.subscribe(actor_ref::ActorRef::TokioActorRef(actor_ref));
-                        return Ok(());
+                        Ok(())
                     }
                     Err(_) => {
-                        return Err(Error::new(
+                        Err(Error::new(
                             ErrorKind::InvalidInput,
                             "Failed to create actor ref.",
-                        ));
+                        ))
                     }
-                };
+                }
             }
-            SelectActor::KafkaConsumerActor => {
-                let actor = actor::Actor::KafkaConsumerActor(actor::KafkaConsumerActor::new(
+            SelectActor::KafkaConsumer => {
+                let actor = actor::Actor::KafkaConsumer(actor::KafkaConsumer::new(
                     rec, None, None,
                 ));
                 match actor_ref::TokioActorRef::new(actor, snd) {
                     Ok(actor_ref) => {
                         officer.subscribe(actor_ref::ActorRef::TokioActorRef(actor_ref));
-                        return Ok(());
+                        Ok(())
                     }
                     Err(_) => {
-                        return Err(Error::new(
+                        Err(Error::new(
                             ErrorKind::InvalidInput,
                             "Failed to create actor ref.",
-                        ));
+                        ))
                     }
                 }
             },
@@ -366,7 +366,7 @@ impl OfficerFactory for Guardian {
                 ));
             }
         };
-        let _ = match officer.courriers.get(courrier_id as usize) {
+        match officer.courriers.get(courrier_id as usize) {
             Some(_) => (),
             None => {
                 return Err(Error::new(
@@ -398,14 +398,14 @@ mod tests {
             .create_officer(SelectActor::Collector)
             .expect("Failed to create officer.");
         guardian
-            .create_officer(SelectActor::CleaningActor)
+            .create_officer(SelectActor::Cleaner)
             .expect("Failed to create officer.");
         guardian
-            .create_officer(SelectActor::KafkaProducerActor)
+            .create_officer(SelectActor::KafkaProducer)
             .expect("Failed to create officer.");
         // Let's test this properly.
         guardian
-            .create_officer(SelectActor::LogActor)
+            .create_officer(SelectActor::Logging)
             .expect("Failed to create officer.");
         assert!(guardian.officers.len() == 4);
         guardian
@@ -431,7 +431,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         guardian
             .receive(messages::GuardianMessage::CreateOfficer {
-                officer_type: SelectActor::LogActor,
+                officer_type: SelectActor::Logging,
                 responder: tx,
             })
             .await
@@ -446,7 +446,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         guardian
             .receive(messages::GuardianMessage::CreateOfficer {
-                officer_type: SelectActor::LogActor,
+                officer_type: SelectActor::Logging,
                 responder: tx,
             })
             .await
@@ -470,7 +470,7 @@ mod tests {
         guardian
             .receive(messages::GuardianMessage::AddCourrier {
                 officer_id: 0,
-                courrier_type: SelectActor::CleaningActor,
+                courrier_type: SelectActor::Cleaner,
                 responder: tx,
             })
             .await
@@ -499,7 +499,7 @@ mod tests {
         guardian
             .receive(messages::GuardianMessage::AddCourrier {
                 officer_id: 0,
-                courrier_type: SelectActor::CleaningActor,
+                courrier_type: SelectActor::Cleaner,
                 responder: tx,
             })
             .await
@@ -522,21 +522,21 @@ mod tests {
         let (_tx, rx) = mpsc::channel(1);
         let mut guardian = Guardian::new(rx);
         assert!(guardian
-            .add_courrier(0, SelectActor::CleaningActor)
+            .add_courrier(0, SelectActor::Cleaner)
             .is_err());
         assert!(guardian.remove_courrier(0, 0).is_err());
         assert!(guardian.create_officer(SelectActor::Collector).is_ok());
-        assert!(guardian.create_officer(SelectActor::CleaningActor).is_ok());
+        assert!(guardian.create_officer(SelectActor::Cleaner).is_ok());
         assert!(guardian
-            .create_officer(SelectActor::KafkaProducerActor)
+            .create_officer(SelectActor::KafkaProducer)
             .is_ok());
-        assert!(guardian.create_officer(SelectActor::LogActor).is_ok());
-        assert!(guardian.add_courrier(0, SelectActor::CleaningActor).is_ok());
+        assert!(guardian.create_officer(SelectActor::Logging).is_ok());
+        assert!(guardian.add_courrier(0, SelectActor::Cleaner).is_ok());
         assert!(guardian.add_courrier(0, SelectActor::Collector).is_ok());
         assert!(guardian
-            .add_courrier(0, SelectActor::KafkaProducerActor)
+            .add_courrier(0, SelectActor::KafkaProducer)
             .is_ok());
-        assert!(guardian.add_courrier(0, SelectActor::LogActor).is_ok());
+        assert!(guardian.add_courrier(0, SelectActor::Logging).is_ok());
         assert!(guardian.officers[0].courriers.len() == 4);
         assert!(guardian.remove_courrier(0, 0).is_ok());
         assert!(guardian.officers[0].courriers.len() == 3);
