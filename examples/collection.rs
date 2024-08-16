@@ -1,9 +1,6 @@
 extern crate sids;
 
 use env_logger::{Builder, Env};
-use sids::actors::api::*;
-use sids::actors::messages::Message;
-use sids::actors::officer::SelectActor;
 
 // NOTE: This will collect some data from the internet and store it in the current directory.
 
@@ -13,24 +10,8 @@ fn get_loggings() {
 }
 
 async fn start_sample_actor_system() {
-    let mut _actor_system = start_actor_system();
-    //_actor_system.spawn_actor(SelectActor::GetActor);
-    spawn_officer(&mut _actor_system, SelectActor::Collector).await;
-    spawn_officer(&mut _actor_system, SelectActor::Collector).await;
-    spawn_officer(&mut _actor_system, SelectActor::Collector).await;
+    // Start an actor system and spawn a few officers with some actors that collect stuff from a url
 
-    for j in 0..3 {
-        std::thread::sleep(std::time::Duration::from_secs(4));
-        send_message_to_officer(
-            &mut _actor_system,
-            j,
-            Message::GetURI {
-                uri: "http://www.example.com".to_string(),
-                location: format!("./tmp_example{}", j),
-            },
-        )
-        .await;
-    }
 }
 
 #[tokio::main]

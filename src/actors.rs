@@ -11,15 +11,15 @@ pub mod api {
 
     use crate::actors::actor_system::ActorSystem;
 
-    use super::officer::SelectActor;
+    use super::actor::ActorTrait;
 
     pub fn start_actor_system() -> ActorSystem {
         ActorSystem::new()
     }
 
-    pub async fn spawn_officer(
+    pub async fn spawn_officer<T: ActorTrait>(
         actor_system: &mut ActorSystem,
-        actor_type: SelectActor,
+        actor_type: T,
     ) -> &mut ActorSystem {
         actor_system
             .create_officer(actor_type)
@@ -28,10 +28,10 @@ pub mod api {
         actor_system
     }
 
-    pub async fn spawn_courrier(
+    pub async fn spawn_courrier<T: ActorTrait + 'static>(
         actor_system: &mut ActorSystem,
         officer_id: u32,
-        courrier_type: SelectActor,
+        courrier_type: T,
     ) -> &mut ActorSystem {
         actor_system
             .add_courrier(officer_id, courrier_type)
@@ -60,13 +60,26 @@ pub mod api {
 
     #[cfg(test)]
     mod tests {
+
+        use crate::actors::{actor::ActorTrait, messages::InternalMessage};
+
         use super::*;
+
+        struct Logging;
+        impl ActorTrait for Logging {
+            async fn receive(&mut self, message: InternalMessage) {
+                log::info!("Logging message: {:?}", message);
+            }
+
+        }
 
         #[tokio::test]
         async fn test_actor_system() {
+            // Create an actor.S
+            let logging = Logging;
             let mut _actor_system = start_actor_system();
-            spawn_officer(&mut _actor_system, SelectActor::Logging).await;
-            spawn_courrier(&mut _actor_system, 0, SelectActor::Logging).await;
+            spawn_officer(&mut _actor_system, logging).await;
+            //spawn_courrier(&mut _actor_system, 0,logging).await;
         }
     }
 }

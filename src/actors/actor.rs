@@ -1,422 +1,72 @@
-use crate::actors::messages;
-
-use kafka::producer::Record;
-use log::info;
-use std::io::prelude::*;
-use std::io::Error;
+use super::{guardian::Guardian, messages::InternalMessage};
 use tokio::sync::mpsc;
 
-use super::guardian::Guardian;
 
-#[trait_variant::make(HttpService: Send)]
+// Will attempt to use this to abstract over ActorTrait and BlockingActorTrait at some point
 
-pub(super) trait ActorType {
-    async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error>;
+
+pub (super) async fn blocking_actor_receive( actor: &mut dyn BlockingActorTrait, message: InternalMessage) {
+    actor.handle_message(message);
 }
 
-pub trait SyncActorType {
-    fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error>;
+#[trait_variant::make(ActorTrait: Send)]
+pub trait ActorTraitImpl{
+    async fn receive(&mut self, message: InternalMessage) where Self: Sized;
 }
 
-#[allow(dead_code)]
-pub(super) enum Actor {
-    Guardian(Guardian),
-    Collector(Collector),
-    Logging(Logging),
-    Cleaner(Cleaner),
-    KafkaProducer(KafkaProducer),
-    KafkaConsumer(KafkaConsumer),
-    None,
+pub trait BlockingActorTrait: ActorTrait {
+    async fn receive(&mut self, message: InternalMessage) where Self: Sized {
+        blocking_actor_receive(self, message).await;
+    }
+
+    fn handle_message(&mut self, message: InternalMessage);
 }
 
-pub(super) struct Logging {
-    _receiver: mpsc::Receiver<messages::InternalMessage>,
-}
-
-impl ActorType for Logging {
-    async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
-        match message {
-            messages::InternalMessage::LogMessage { message } => {
-                info!(actor = "Logging"; "Log message: {} as per request.", message);
-            }
-            messages::InternalMessage::Terminate => {
-                println!("Actor terminated");
-                self._receiver.close();
-                return Err(Error::new(std::io::ErrorKind::Other, "Actor terminated"));
-            }
-            _ => {}
-        }
-        Ok(())
+pub (super) async fn run_guardian(mut actor: Guardian) {
+    while let Some(message) = actor.receiver.recv().await {
+        actor.receive(message).await;
     }
 }
 
-impl Logging {
-    pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> Logging {
-        Logging {
-            _receiver: receiver,
-        }
+pub (super) async fn run_an_actor<T: ActorTrait>(mut actor : Actor<T>) {
+    while let Some(message) = actor.receiver.recv().await {
+        actor.receive(message).await;
     }
-    pub(super) async fn run(&mut self) {
-        info!(actor = "Log Actor"; "Running log actor");
-        while let Some(message) = self._receiver.recv().await {
-            self.receive(message).await.unwrap();
-        }
+
+}
+
+pub (super) fn run_a_blocking_actor<T: BlockingActorTrait>(mut actor: BlockingActor<T>) {
+    while let Ok(message) = actor.receiver.recv() {
+        actor.receive(message);
     }
 }
 
-pub(crate) struct Collector {
-    receiver: std::sync::mpsc::Receiver<messages::InternalMessage>,
+
+pub (super) struct Actor<T> {
+    actor: T,
+    receiver: mpsc::Receiver<InternalMessage>,
 }
 
-impl SyncActorType for Collector {
-    fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
-        match message {
-            messages::InternalMessage::Terminate => {
-                // terminate the actor. What do I need to do to stop the listener?
-                info!("Actor terminated");
-                return Err(Error::new(std::io::ErrorKind::Other, "Actor terminated"));
-            }
-            messages::InternalMessage::CollectorMessage(
-                messages::CollectorMessage::GetURITemplate { uri, location },
-            ) => {
-                self.get_uri(uri, location).expect("Failed to get URI");
-            }
-            messages::InternalMessage::CollectorMessage(messages::CollectorMessage::GetURI {
-                uri,
-                location,
-                responder,
-            }) => {
-                self.get_uri(uri, location).expect("Failed to get URI");
-                responder.send(messages::ResponseMessage::Success).unwrap();
-            }
-            _ => {}
-        }
-        Ok(())
+impl <T: ActorTrait> Actor<T> {
+    pub (super) async fn receive(&mut self, message: InternalMessage){
+        ActorTrait::receive(&mut self.actor, message).await;
+    }
+    pub (super) fn new (actor: T, receiver: mpsc::Receiver::<InternalMessage>) -> Self {
+
+        Actor { actor, receiver }
     }
 }
 
-impl Collector {
-    // Collector requires spawn blocking in order to get the response from the reqwest::blocking::get method.
-    pub(super) fn new(receiver: std::sync::mpsc::Receiver<messages::InternalMessage>) -> Collector {
-        info!(actor = "Get Actor"; "Creating Get Actor");
-        Collector { receiver }
-    }
-
-    pub(super) fn run(&mut self) {
-        while let Ok(message) = self.receiver.recv() {
-            self.receive(message).unwrap();
-        }
-    }
-
-    fn get_uri(&self, uri: String, location: String) -> Result<(), Error> {
-        if cfg!(test) {
-            return Ok(());
-        }
-        info!("Getting URI {}", uri);
-        info!("Writing to location {}", location);
-        let res = reqwest::blocking::get(uri).unwrap().text().unwrap();
-        self.write_to_file(res, location).unwrap();
-        Ok(())
-    }
-
-    fn write_to_file(&self, body: String, location: String) -> Result<(), Error> {
-        if cfg!(test) {
-            return Ok(());
-        }
-        info!("Writing to file - {}", location);
-        let mut file = std::fs::File::create(location).unwrap();
-        file.write_all(body.as_bytes()).unwrap();
-        Ok(())
-    }
+pub (super) struct BlockingActor<T> {
+    actor: T,
+    receiver: std::sync::mpsc::Receiver<InternalMessage>
 }
 
-pub(super) struct Cleaner {
-    _receiver: mpsc::Receiver<messages::InternalMessage>,
-}
-
-impl ActorType for Cleaner {
-    async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
-        match message {
-            messages::InternalMessage::Terminate => {
-                println!("Actor terminated");
-                self._receiver.close();
-                return Err(Error::new(std::io::ErrorKind::Other, "Actor terminated"));
-            }
-            messages::InternalMessage::CleanerMessage(
-                messages::CleanerMessage::Clean { location },
-            ) => {
-                self.clean(location).expect("Failed to clean location");
-            }
-            _ => {}
-        }
-        Ok(())
+impl <T: BlockingActorTrait> BlockingActor<T> {
+    pub (super) fn receive(&mut self, message: InternalMessage) {
+        BlockingActorTrait::receive(&mut self.actor, message);
+    }
+    pub (super) fn new (actor: T, receiver: std::sync::mpsc::Receiver<InternalMessage>) -> BlockingActor<T> {
+        BlockingActor { actor, receiver}
     }
 }
-
-impl Cleaner {
-    pub(super) fn new(receiver: mpsc::Receiver<messages::InternalMessage>) -> Cleaner {
-        Cleaner {
-            _receiver: receiver,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(super) async fn run(&mut self) {
-        info!(actor = "Cleaning Actor"; "Running cleaning actor");
-        while let Some(message) = self._receiver.recv().await {
-            self.receive(message).await.unwrap();
-        }
-    }
-
-    #[allow(dead_code)]
-    fn clean(&self, location: String) -> Result<(), Error> {
-        info!("Cleaning location {}", location);
-        // get the data from the file location and clean it somehow.
-        Ok(())
-    }
-}
-
-pub(super) struct KafkaProducer {
-    receiver: mpsc::Receiver<messages::InternalMessage>,
-    broker_host: String,
-    broker_port: String,
-}
-
-impl Default for KafkaProducer {
-    fn default() -> Self {
-        KafkaProducer {
-            receiver: mpsc::channel(1).1,
-            broker_host: "localhost".to_owned(),
-            broker_port: "29092".to_owned(),
-        }
-    }
-}
-
-impl ActorType for KafkaProducer {
-    async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
-        match message {
-            messages::InternalMessage::Terminate => {
-                println!("Actor terminated");
-                self.receiver.close();
-                return Err(Error::new(std::io::ErrorKind::Other, "Actor terminated"));
-            }
-            messages::InternalMessage::KafkaProducerMessage(
-                messages::KafkaProducerMessage::Produce {
-                    topic,
-                    key,
-                    message,
-                },
-            ) => {                
-                let broker_string = format!("{}:{}", self.broker_host, self.broker_port);
-                let mut producer =
-                    kafka::producer::Producer::from_hosts(vec![broker_string.to_owned()])
-                        .create()
-                        .unwrap();
-
-                // in the test environment, we don't want to produce messages to Kafka.
-                 if cfg!(test) {
-                    return Ok(());
-                }
-                // grcov-excl-start
-                producer
-                    .send(&Record::from_key_value(
-                        topic.as_str(),
-                        key.as_str(),
-                        message.as_bytes(),
-                    ))
-                    .unwrap();
-                // do we ever need a response from the kafka producer?
-                // grcov-excl-stop
-            }
-
-            _ => {}
-            
-        }
-        Ok(())
-    }
-}
-
-impl KafkaProducer {
-    pub(super) fn new(
-        receiver: mpsc::Receiver<messages::InternalMessage>,
-        host: Option<String>,
-        port: Option<String>,
-    ) -> KafkaProducer {
-        KafkaProducer {
-            receiver,
-            broker_host: host.unwrap_or("localhost".to_string()),
-            broker_port: port.unwrap_or("29092".to_string()),
-        }
-    }
-
-    pub(super) async fn run(&mut self) {
-        info!(actor = "Kafka Producer"; "Running Kafka producer actor");
-        while let Some(message) = self.receiver.recv().await {
-            self.receive(message).await.unwrap();
-        }
-    }
-}
-
-pub(super) struct KafkaConsumer {
-    receiver: mpsc::Receiver<messages::InternalMessage>,
-    broker_host: String,
-    broker_port: String,
-}
-impl Default for KafkaConsumer {
-    fn default() -> Self {
-        KafkaConsumer {
-            receiver: mpsc::channel(1).1,
-            broker_host: "localhost".to_owned(),
-            broker_port: "29092".to_owned(),
-        }
-    }
-}
-
-impl ActorType for KafkaConsumer {
-    async fn receive(&mut self, message: messages::InternalMessage) -> Result<(), Error> {
-        match message {
-            messages::InternalMessage::Terminate => {
-                println!("Actor terminated");
-                self.receiver.close();
-                return Err(Error::new(std::io::ErrorKind::Other, "Actor terminated"));
-            }
-            messages::InternalMessage::KafkaConsumerMessage(
-                messages::KafkaConsumerMessage::Consume { topic, group: _ },
-            ) => {
-                let broker_string = format!("{}:{}", self.broker_host, self.broker_port);
-                let mut consumer = kafka::consumer::Consumer::from_hosts(vec![broker_string])
-                    .with_topic(topic)
-                    .create()
-                    .unwrap();
-                // in the test environment, we don't want to consume messages from Kafka.
-                if cfg!(test) {
-                    return Ok(());
-                }
-                // grcov-excl-start
-                consumer.poll().unwrap();
-                // grcov-excl-stop
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-}
-
-impl KafkaConsumer {
-    #[allow(dead_code)]
-    pub(super) fn new(
-        receiver: mpsc::Receiver<messages::InternalMessage>,
-        host: Option<String>,
-        port: Option<String>,
-    ) -> KafkaConsumer {
-        KafkaConsumer {
-            receiver,
-            broker_host: host.unwrap_or("localhost".to_string()),
-            broker_port: port.unwrap_or("29092".to_string()),
-        }
-    }
-
-    pub(super) async fn run(&mut self) {
-        info!(actor = "Kafka Consumer"; "Running Kafka consumer actor");
-        while let Some(message) = self.receiver.recv().await {
-            self.receive(message).await.unwrap();
-        }
-    }
-}
-
-// grcov-excl-start
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_log_actor_receives_standard_log_message() {
-        let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        let mut actor = super::Logging::new(rx);
-        //actor.run().await;
-        assert!(actor
-            .receive(super::messages::InternalMessage::LogMessage {
-                message: "Test".to_string()
-            })
-            .await
-            .is_ok());
-        assert!(actor
-            .receive(super::messages::InternalMessage::Terminate)
-            .await
-            .is_err());
-    }
-
-    #[test]
-    fn test_collector() {
-        let (_tx, rx) = std::sync::mpsc::channel();
-        let mut actor = Collector::new(rx);
-        //actor.run();
-        // These will need to be confirmed in integration tests somehow.
-        assert!(actor
-            .get_uri("test_uri".to_string(), "test_location".to_string())
-            .is_ok());
-        assert!(actor
-            .write_to_file("body".to_string(), "location".to_string())
-            .is_ok());
-        assert!(actor
-            .receive(super::messages::InternalMessage::CollectorMessage(
-                super::messages::CollectorMessage::GetURITemplate {
-                    uri: "test_uri".to_string(),
-                    location: "test_location".to_string()
-                }
-            ))
-            .is_ok());
-        assert!(actor
-            .receive(super::messages::InternalMessage::Terminate)
-            .is_err());
-    }
-
-    #[tokio::test]
-
-    async fn test_kafka_producer() {
-        let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        let mut actor =
-            KafkaProducer::new(rx, Some("localhost".to_string()), Some("29092".to_string()));
-        let mut actor2 = KafkaProducer::default();
-        //actor.run().await;
-
-        assert!(actor2
-            .receive(super::messages::InternalMessage::KafkaProducerMessage(
-                super::messages::KafkaProducerMessage::Produce {
-                    topic: "test".to_string(),
-                    key: "test".to_string(),
-                    message: "test".to_string()
-                }
-            ))
-            .await
-            .is_ok());
-        assert!(actor
-            .receive(super::messages::InternalMessage::Terminate)
-            .await
-            .is_err());
-    }
-
-    #[tokio::test]
-    async fn test_cleaning_actor() {
-        let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        let mut actor = Cleaner::new(rx);
-        //actor.run().await;
-
-        assert!(actor.clean("test".to_string()).is_ok());
-        assert!(actor
-            .receive(super::messages::InternalMessage::CleanerMessage(
-                super::messages::CleanerMessage::Clean {
-                    location: "test".to_string()
-                }
-            ))
-            .await
-            .is_ok());
-        assert!(actor
-            .receive(super::messages::InternalMessage::Terminate)
-            .await
-            .is_err());
-    }
-}
-
-// grcov-excl-stop
