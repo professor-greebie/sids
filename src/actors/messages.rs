@@ -1,35 +1,50 @@
+use super::actor_ref::{ActorRef, BlockingActorRef};
+
 
 
 /// Messages used by the guardian actor to communicate with the officers.
 ///
 /// The guardian actor will create the responders to allow for the officers to communicate back to the guardian
 /// for status updates and other messages.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Message {
+#[derive(Debug)]
+pub (super) enum Message {
     Terminate,
-    TerminateById {
-        id: u32,
-    },
-    GetId,
-    GetURI {
-        uri: String,
-        location: String,
-    },
-    KafkaProduce {
-        topic: String,
-        key: String,
+    OfficerMessage {
+        officer_id: u32,
         message: String,
+        blocking: bool,
     },
-    KafkaConsume {
-        topic: String,
-        group: String,
+    CreateOfficer {
+        officer_type: ActorRef,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
     },
-    LogMessage {
-        message: String,
+    CreateBlockingOfficer {
+        officer_type: BlockingActorRef,
+        responder: std::sync::mpsc::Sender<ResponseMessage>,
     },
-    LogMessageWithResponse {
-        message: String,
+    RemoveOfficer {
+        officer_id: u32,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
     },
+    AddCourrier {
+        officer_id: u32,
+        courrier_type: ActorRef,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+        blocking: bool,
+    },
+    RemoveCourrier {
+        officer_id: u32,
+        courrier_id: u32,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+        blocking: bool,
+    },
+    NotifyCourriers {
+        officer_id: u32,
+        message: InternalMessage,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+        blocking: bool,
+    },
+
 }
 
 
@@ -37,9 +52,11 @@ pub enum Message {
 ///
 /// All responders created by these items ought to be created by the guardian actor.
 #[derive(Debug, Clone, PartialEq)]
-pub struct InternalMessage {
-    pub message : Message,
-    pub payload : Option<String>,
+pub enum InternalMessage {
+    StringMessage {
+        message: String,
+    },
+    Terminate,
 }
 
 /// Response messages used by the actors to communicate back to the guardian actor.

@@ -16,17 +16,15 @@ pub(super) struct Officer {
     pub(super) _id: u32,
     pub(super) actor: ActorRef,
     pub(super) courriers: Vec<ActorRef>,
-    pub(super) blocking_courriers: Vec<BlockingActorRef>,
 }
 
 impl Officer {
 
-    pub fn new(actor: ActorRef) -> Officer {
+    pub fn new(id: u32, actor: ActorRef) -> Officer {
         Officer {
-            _id: 0,
+            _id: id,
             actor,
             courriers: Vec::new(),
-            blocking_courriers: Vec::new(),
         }
     }
 
@@ -39,36 +37,59 @@ impl Officer {
     pub fn subscribe(&mut self, actor: ActorRef) {
         self.courriers.push(actor);
     }
+
     /// Remove a courrier from the officer's list of courriers.
     pub fn unsubscribe(&mut self, actor_id: u32) {
         self.courriers.remove(actor_id as usize);
     }
+
+
     /// Send a message to all courriers.
     pub async fn notify(&mut self, message: InternalMessage) -> Result<(), std::io::Error> {
-        let message_copy = message;
-        self.notify_blocking_courriers(message_copy.clone());
-        self.notify_tokio_courriers(message_copy).await;
-        Ok(())
-    }
-    /// Send a message to all blocking courriers.
-    pub fn notify_blocking_courriers(&mut self, message: InternalMessage) {
-        for courier in self.blocking_courriers.iter_mut() {
-            courier.send(message.clone());
-        }
-    }
-    /// Send a message to all tokio (async)courriers.
-    pub async fn notify_tokio_courriers(&mut self, message: messages::InternalMessage) {
         for courier in self.courriers.iter_mut() {
             courier.send(message.clone()).await;
         }
+        Ok(())
     }
+}
+
+pub (super) struct BlockingOfficer {
+    pub (super) officer: Officer,
+    pub (super) actor: BlockingActorRef,
+}
+
+impl BlockingOfficer {
+    pub fn new(officer: Officer, actor: BlockingActorRef) -> BlockingOfficer {
+        BlockingOfficer {
+            officer,
+            actor,
+        }
+    }
+
+    pub fn send(&mut self, message: messages::InternalMessage) {
+        info!(actor="BlockingOfficer"; "Sending message to BlockingOfficer");
+        self.actor.send(message);
+    }
+
+    pub async fn notify(&mut self, message: InternalMessage) -> Result<(), std::io::Error> {
+        let _ = self.officer.notify(message).await;
+        Ok(())
+    }
+
+    pub fn subscribe(&mut self, actor: ActorRef) {
+        self.officer.subscribe(actor);
+    }
+
+    pub fn unsubscribe(&mut self, actor_id: u32) {
+        self.officer.unsubscribe(actor_id);
+    }
+
 }
 
 // grcov-excl-start
 #[cfg(test)]
 mod tests {
 
-    use super::*;
 
     #[tokio::test]
     async fn test_officer() {

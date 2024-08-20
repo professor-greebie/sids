@@ -1,9 +1,11 @@
 use std::io::Error;
 use std::{io::ErrorKind, result::Result};
+use log::info;
 use tokio::sync::mpsc;
 
-use super::actor::{Actor, ActorTrait};
-use super::actor_ref::{self, ActorRef};
+use super::actor::create_dummy_actor;
+use super::officer::BlockingOfficer;
+use super::actor_ref::{ActorRef, BlockingActorRef};
 use super::{
     messages,
     officer::Officer,
@@ -11,16 +13,18 @@ use super::{
 
 
 
-pub trait OfficerFactory {
-    fn create_officer<T: ActorTrait + 'static>(&mut self, officer_type: T) -> Result<(), Error>;
+trait OfficerFactory {
+    fn create_officer(&mut self, officer_type: ActorRef) -> Result<(), Error>;
+    fn create_blocking_officer(&mut self, officer_type: BlockingActorRef) -> Result<(), Error>;
     fn remove_officer(&mut self, officer_id: u32) -> Result<(), Error>;
-    fn add_courrier<T: ActorTrait + 'static>(&mut self, officer_id: u32, courrier_type: T) -> Result<(), Error>;
+    fn add_courrier(&mut self, officer_id: u32, courrier_type: ActorRef) -> Result<(), Error>;
     fn remove_courrier(&mut self, officer_id: u32, courrier_id: u32) -> Result<(), Error>;
 }
 
 pub(super) struct Guardian {
     pub (super) receiver: mpsc::Receiver<messages::Message>,
-    pub (super) officers: Vec<Box<Officer>>,
+    pub (super) officers: Vec<Officer>,
+    pub (super) blocking_officers: Vec<BlockingOfficer>,
 }
 
 
@@ -29,29 +33,106 @@ impl Guardian {
         Guardian {
             receiver,
             officers: Vec::new(),
+            blocking_officers: Vec::new(),
         }
     }
 
     pub (super) async fn receive(&mut self, message: messages::Message) {
-        // need to examine what to do with messages sent to the guardian
-        // can we pass an actor_ref to the officer?
+
+        match message {
+            messages::Message::CreateOfficer { officer_type, responder } => {
+
+                self.create_officer(officer_type).expect("Failed to create officer");
+                responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
+            }
+            messages::Message::CreateBlockingOfficer { officer_type, responder } => {
+                self.create_blocking_officer(officer_type).expect("Failed to create officer");
+                responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
+            }
+            messages::Message::RemoveOfficer { officer_id, responder } => {
+                self.remove_officer(officer_id).expect("Failed to remove officer");
+                responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
+            }
+            messages::Message::OfficerMessage { officer_id,  message, blocking } => {
+                info!("Guardian received message: {}", message);
+                if blocking {
+                    self.send_message_to_blocking_officer(officer_id, message).await;
+                } else {
+                    self.send_message_to_officer(officer_id, message).await;
+                }
+            }
+            messages::Message::AddCourrier { officer_id, courrier_type, responder , blocking} => {
+                if blocking {
+                    if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
+                        blocking_officer.subscribe(courrier_type);
+                    }
+                } else {
+                self.add_courrier(officer_id, courrier_type).expect("Failed to add courrier");
+                responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
+                }
+            }
+            messages::Message::NotifyCourriers { officer_id, message, responder, blocking} => {
+                info!("Guardian received message: {:?}", message);
+                if blocking {
+                    if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
+                        blocking_officer.notify(message).await.expect("Failed to notify courriers");
+                    }
+                } else
+                if let Some(officer) = self.officers.get_mut(officer_id as usize) {
+                    officer.notify(message).await.expect("Failed to notify courriers");
+                }
+                responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
+            }
+            messages::Message::RemoveCourrier { officer_id, courrier_id, responder, blocking} => {
+                if blocking {
+                    if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
+                        blocking_officer.unsubscribe(courrier_id);
+                    }
+                } else {
+
+                self.remove_courrier(officer_id, courrier_id).expect("Failed to remove courrier");
+                responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
+            }},
+            messages::Message::Terminate => {
+                info!("Guardian received terminate message");
+                //self.stop_system().await;
+            },
+        }
+            
         
+    }
+
+    async fn send_message_to_officer(&mut self, officer_id: u32, message: String) {
+        info!("Sending message to officer {}", officer_id);
+        if let Some(officer) = self.officers.get_mut(officer_id as usize) {
+            officer.send(messages::InternalMessage::StringMessage { message }).await;
+        }
+    }
+
+    async fn send_message_to_blocking_officer(&mut self, officer_id: u32, message: String) {
+        info!("Sending message to blocking officer {}", officer_id);
+        if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
+            blocking_officer.send(messages::InternalMessage::StringMessage { message });
+        }
     }
     
 
 }
 
 impl OfficerFactory for Guardian {
-    fn create_officer<T: ActorTrait + 'static>(&mut self, officer_type: T) -> Result<(), Error> {
-        // How to pass the actor ref to the officer?
+    fn create_officer(&mut self, officer_type: ActorRef) -> Result<(), Error> {
         let officer_id = self.officers.len() as u32;
-        let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(
-            super::SIDS_DEFAULT_BUFFER_SIZE,
-        );
-        let actor = Actor::new(officer_type, rec);
-        let actor_ref = ActorRef::new(actor, snd);
-        let officer = Officer::new(actor_ref);
-        self.officers.push(Box::new(officer)); 
+        let officer = Officer::new(officer_id, officer_type);
+        self.officers.push(officer); 
+        Ok(())
+    }
+
+    fn create_blocking_officer(&mut self, officer_type: BlockingActorRef) -> Result<(), Error> {
+        let officer_id = self.officers.len() as u32;
+        let dummy_actor_ref = create_dummy_actor();
+        let officer = Officer::new(officer_id, dummy_actor_ref);
+        let blocking_officer = BlockingOfficer::new(officer, officer_type);
+        self.blocking_officers.push(blocking_officer); 
         Ok(())
     }
 
@@ -71,7 +152,7 @@ impl OfficerFactory for Guardian {
         Ok(())
     }
 
-    fn add_courrier<T: ActorTrait + Sized + 'static>(&mut self, officer_id: u32, courrier: T) -> Result<(), Error> {
+    fn add_courrier(&mut self, officer_id: u32, courrier: ActorRef) -> Result<(), Error> {
         let officer = match self.officers.get_mut(officer_id as usize) {
             Some(officer) => officer,
             None => {
@@ -80,13 +161,8 @@ impl OfficerFactory for Guardian {
                     format!("No Officer found with id {}.", officer_id),
                 ));
             }
-        };
-        let (snd, rec) = tokio::sync::mpsc::channel::<messages::InternalMessage>(
-            super::SIDS_DEFAULT_BUFFER_SIZE,
-        );
-        let actor = Actor::new(courrier, rec);
-        let actor_ref = actor_ref::ActorRef::new(actor, snd);         
-        officer.subscribe(actor_ref);
+        };  
+        officer.subscribe(courrier);
         Ok(())
     }
 
@@ -119,16 +195,17 @@ impl OfficerFactory for Guardian {
 // grcov-excl-start
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use messages::ResponseMessage;
-    use tokio::sync::oneshot;
+    // use super::*;
+    /* use messages::ResponseMessage;
+    use tokio::sync::oneshot; */
 
 
 
     #[tokio::test]
     async fn test_guardian_actor() {
-        let (_tx, rx) = mpsc::channel(1);
-        let mut guardian = Guardian::new(rx);
+        /* let (_tx, rx) = mpsc::channel(1);
+        let guardian = Guardian::new(rx); 
+        */
 
 
     }
@@ -137,17 +214,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_guardian_actor_get_next_id() {
-        let (_tx, rx) = mpsc::channel(1);
-        let mut guardian = Guardian::new(rx);
-        let (tx, rx) = oneshot::channel::<ResponseMessage>();
+        /* let (_tx, rx) = mpsc::channel(1);
+        let guardian = Guardian::new(rx);
+        let (tx, rx) = oneshot::channel::<ResponseMessage>(); */
     
     }
 
     #[tokio::test]
     async fn test_guardian_send_features() {
-        let (_tx, rx) = mpsc::channel(1);
+        /* let (_tx, rx) = mpsc::channel(1);
         let mut guardian = Guardian::new(rx);
-        let (tx, rx) = oneshot::channel::<ResponseMessage>();
+        let (tx, rx) = oneshot::channel::<ResponseMessage>(); */
         
            
         
@@ -155,8 +232,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_guardian_actor_creates_courriers() {
-        let (_tx, rx) = mpsc::channel(1);
-        let mut guardian = Guardian::new(rx);
+        /* let (_tx, rx) = mpsc::channel(1);
+        let mut guardian = Guardian::new(rx); */
 
         
     }
