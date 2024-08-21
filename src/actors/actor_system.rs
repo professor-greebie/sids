@@ -84,7 +84,7 @@ impl ActorSystem {
         let (tx2, rx2) = std::sync::mpsc::channel::<InternalMessage>();
         // create actor reference here and send it to the guardian.
         let (tx, rx) = std::sync::mpsc::channel::<ResponseMessage>();
-        let actor = BlockingActor::new(actor_type, rx2);
+        let actor = BlockingActor::new(name, actor_type, rx2);
         let actor_ref = BlockingActorRef::new(actor, tx2);
         // send message to guardian to create officer
         let msg = Message::CreateBlockingOfficer { officer_type: actor_ref, responder: tx };
@@ -112,10 +112,9 @@ impl ActorSystem {
 
     pub async fn dispatch(&mut self, officer_id : u32, message: InternalMessage, blocking: bool) {
         info!("Dispatching message to actor system");
-        if let InternalMessage::StringMessage { message } = message {
-            info!("Dispatching message: {}", message);
-            self.guardian_ref.send(Message::OfficerMessage { officer_id, message: message, blocking }).await;
-        }
+        
+        self.guardian_ref.send(Message::OfficerMessage { officer_id, message, blocking }).await;
+    
          // convert to correct message type when available
     }
 

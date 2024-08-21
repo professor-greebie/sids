@@ -108,8 +108,8 @@ mod tests {
     #[test]
     fn test_blocking_actor_ref() {
         let (_tx, rx) = std::sync::mpsc::channel::<InternalMessage>();
-        let actor = BlockingActor::new(SampleBlockingActor, rx);
-        let _actor_ref = BlockingActorRef::new(actor, _tx);
+        let actor = BlockingActor::new(None, SampleBlockingActor, rx);
+        let _actor_ref = BlockingActorRef::new( actor, _tx,);
         assert!(_actor_ref.send(InternalMessage::StringMessage { message: "Test".to_string() }) == ());
         //assert!(_actor_ref.sender == InternalMessage::LogMessage { message: "Test".to_string() }.type_id());
     }

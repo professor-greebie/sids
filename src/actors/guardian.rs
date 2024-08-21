@@ -3,7 +3,9 @@ use std::{io::ErrorKind, result::Result};
 use log::info;
 use tokio::sync::mpsc;
 
+
 use super::actor::create_dummy_actor;
+use super::messages::InternalMessage;
 use super::officer::BlockingOfficer;
 use super::actor_ref::{ActorRef, BlockingActorRef};
 use super::{
@@ -54,7 +56,7 @@ impl Guardian {
                 responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
             }
             messages::Message::OfficerMessage { officer_id,  message, blocking } => {
-                info!("Guardian received message: {}", message);
+                info!("Guardian received message to send message to {}", officer_id);
                 if blocking {
                     self.send_message_to_blocking_officer(officer_id, message).await;
                 } else {
@@ -71,18 +73,22 @@ impl Guardian {
                 responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
                 }
             }
+            
             messages::Message::NotifyCourriers { officer_id, message, responder, blocking} => {
                 info!("Guardian received message: {:?}", message);
+
+                // broadcast notifications require that actors can receive a cloneable message type or a borrowed message type
+                // might not be necessary for the current implementation but can be build in if its desired.
                 if blocking {
                     if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
-                        blocking_officer.notify(message).await.expect("Failed to notify courriers");
+                        blocking_officer.notify(&message).await.expect("Failed to notify courriers");
                     }
                 } else
                 if let Some(officer) = self.officers.get_mut(officer_id as usize) {
-                    officer.notify(message).await.expect("Failed to notify courriers");
+                    officer.notify(&message).await.expect("Failed to notify courriers");
                 }
                 responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
-            }
+            } 
             messages::Message::RemoveCourrier { officer_id, courrier_id, responder, blocking} => {
                 if blocking {
                     if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
@@ -102,17 +108,18 @@ impl Guardian {
         
     }
 
-    async fn send_message_to_officer(&mut self, officer_id: u32, message: String) {
+    async fn send_message_to_officer(&mut self, officer_id: u32, message: InternalMessage) {
         info!("Sending message to officer {}", officer_id);
         if let Some(officer) = self.officers.get_mut(officer_id as usize) {
-            officer.send(messages::InternalMessage::StringMessage { message }).await;
+            officer.send(message).await;
         }
     }
 
-    async fn send_message_to_blocking_officer(&mut self, officer_id: u32, message: String) {
+    async fn send_message_to_blocking_officer(&mut self, officer_id: u32, message: InternalMessage) {
         info!("Sending message to blocking officer {}", officer_id);
         if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
-            blocking_officer.send(messages::InternalMessage::StringMessage { message });
+
+            blocking_officer.send(message);
         }
     }
     

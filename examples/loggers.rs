@@ -24,7 +24,10 @@ impl SampleActor {
     }
 }
 
-impl ActorTrait for SampleActor where SampleActor: 'static {
+impl ActorTrait for SampleActor
+where
+    SampleActor: 'static,
+{
     async fn receive(&mut self, message: InternalMessage) {
         let name = self.name.clone();
         // Log the message received by the actor.
@@ -35,25 +38,27 @@ impl ActorTrait for SampleActor where SampleActor: 'static {
     }
 }
 
-struct SampleBlockingActor; 
+struct SampleBlockingActor;
 
-    impl ActorTrait for SampleBlockingActor where SampleBlockingActor: 'static {
-        async fn receive(&mut self, message: InternalMessage) {
-            // do nothing
-            info!("Received message in blocking actor via ActorTrait");
-            self.handle_message(message);
+impl ActorTrait for SampleBlockingActor
+where
+    SampleBlockingActor: 'static,
+{
+    async fn receive(&mut self, message: InternalMessage) {
+        // do nothing
+        info!("Received message in blocking actor via ActorTrait");
+        self.handle_message(message);
+    }
+}
+
+impl BlockingActorTrait for SampleBlockingActor {
+    fn handle_message(&mut self, _message: InternalMessage) {
+        info!("Received message to blocking actor");
+        if let InternalMessage::StringMessage { message } = _message {
+            info!("Blocking actor received string message: {}", message);
         }
     }
-
-    impl BlockingActorTrait for SampleBlockingActor  {
-        
-        fn handle_message(&mut self, _message: InternalMessage) {
-            info!("Received message to blocking actor");
-            if let InternalMessage::StringMessage { message } = _message {
-                info!("Blocking actor received string message: {}", message);
-            }
-        }
-    }
+}
 
 async fn start_sample_actor_system() {
     // Start an actor system and spawn a few officers with some actors that send messages to each other.
@@ -61,18 +66,33 @@ async fn start_sample_actor_system() {
     let actor_type = SampleActor::new("Actor 1".to_string());
     let actor_type2 = SampleActor::new("Actor 2".to_string());
     let actor_type3 = SampleActor::new("Actor 3".to_string());
-    spawn_officer(&mut actor_system,Some(actor_type.name.clone()), actor_type).await;
+    spawn_officer(&mut actor_system, Some(actor_type.name.clone()), actor_type).await;
     spawn_officer(&mut actor_system, None, actor_type2).await;
-    spawn_blocking_officer(&mut actor_system, Some("Generic blocking actor".to_string()), SampleBlockingActor).await;
-    spawn_officer(&mut actor_system, Some(actor_type3.name.clone()),actor_type3).await;
-    
+    spawn_blocking_officer(
+        &mut actor_system,
+        Some("Generic blocking actor".to_string()),
+        SampleBlockingActor,
+    )
+    .await;
+    spawn_officer(
+        &mut actor_system,
+        Some(actor_type3.name.clone()),
+        actor_type3,
+    )
+    .await;
+
     let message = "Hello Actor 1".to_string();
     // Send messages to the actors.
     send_message_to_officer(&mut actor_system, 0, message, false).await;
     send_message_to_officer(&mut actor_system, 1, "what's up?".to_string(), false).await;
-    send_message_to_officer(&mut actor_system, 0, "I am a blocking actor".to_string(), true).await;
+    send_message_to_officer(
+        &mut actor_system,
+        0,
+        "I am a blocking actor".to_string(),
+        true,
+    )
+    .await;
     send_message_to_officer_enum(&mut actor_system, 0, InternalMessage::Terminate, false).await;
-    
 }
 
 #[tokio::main]

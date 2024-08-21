@@ -1,29 +1,22 @@
-#[trait_variant::make(SourceTrait<T>: Send)]
-trait SourceTraitImpl<T> : ActorTrait {
-    async fn receive(&mut self, message: InternalMessage);
-    fn flatten(&mut self) -> Source<T>; 
-    fn map<U>(&mut self, f: fn(T) -> U) -> Source<U>;
 
-}
+
 
 pub struct Source<T> {
-    content: T,
+    _content: T,
 }
-
-impl SourceTrait<T> for Source<T> {
+/* 
+impl<T> Source<T> {
     async fn receive(&mut self, message: InternalMessage) {
         // is it possible to change the message type here?
         SourceTrait::receive(&mut self.content, message);
     }
 
     fn flatten(&mut self) -> Source<T> {
-        NotImplemented;
-
+        let content = std::mem::replace(&mut self.content, Default::default());
+        Source::<T> { content }
     }
 
     fn map<U>(&mut self, f: fn(T) -> U) -> Source<U> {
-        NotImplemented;
+        Source::<u32> { content: 0 }
     }
-
-    
-}
+} */

@@ -4,6 +4,7 @@ pub mod actor_system;
 pub mod guardian;
 pub mod messages;
 pub mod officer;
+pub mod community;
 
 static SIDS_DEFAULT_BUFFER_SIZE: usize = 100;
 

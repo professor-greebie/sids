@@ -1,3 +1,4 @@
+
 use super::actor_ref::{ActorRef, BlockingActorRef};
 
 
@@ -11,7 +12,7 @@ pub (super) enum Message {
     Terminate,
     OfficerMessage {
         officer_id: u32,
-        message: String,
+        message: InternalMessage,
         blocking: bool,
     },
     CreateOfficer {
@@ -51,10 +52,21 @@ pub (super) enum Message {
 /// Internal messages used by the actors to communicate with each other internally.
 ///
 /// All responders created by these items ought to be created by the guardian actor.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum InternalMessage {
     StringMessage {
         message: String,
+    },
+    RequestStatus {
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+    },
+    GetUrl {
+        url: String,
+        output: String,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+    },
+    UpdateName {
+        name: String,
     },
     Terminate,
 }
@@ -65,6 +77,8 @@ pub enum InternalMessage {
 #[derive(Debug, PartialEq)]
 pub enum ResponseMessage {
     NoMessage,
+    Ok,
+    Problem(String),
     Yes,
     No,
     Terminated,

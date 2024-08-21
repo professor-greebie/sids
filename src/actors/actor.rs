@@ -82,20 +82,22 @@ impl <T: ActorTrait> Actor<T> {
 }
 
 pub (super) struct BlockingActor<T> {
+    name: Option<String>,
     actor: T,
     receiver: std::sync::mpsc::Receiver<InternalMessage>
 }
 
 impl <T: BlockingActorTrait> BlockingActor<T> {
     #[allow(dead_code)]
-     pub (super) async fn receive(&mut self, message: InternalMessage) {
+     pub (super) fn receive(&mut self, message: InternalMessage) {
+        info!("Blocking actor {} received message", self.name.clone().unwrap_or("Unnamed Blocking Actor".to_string()));
         BlockingActorTrait::handle_message(&mut self.actor, message);
     }
     pub (super) fn handle_message(&mut self, message: InternalMessage) {
         BlockingActorTrait::handle_message(&mut self.actor, message);
     }
 
-    pub (super) fn new (actor: T, receiver: std::sync::mpsc::Receiver<InternalMessage>) -> BlockingActor<T> {
-        BlockingActor { actor, receiver}
+    pub (super) fn new (name: Option<String>, actor: T, receiver: std::sync::mpsc::Receiver<InternalMessage>) -> BlockingActor<T> {
+        BlockingActor { name, actor, receiver}
     }
 }

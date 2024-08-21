@@ -45,9 +45,9 @@ impl Officer {
 
 
     /// Send a message to all courriers.
-    pub async fn notify(&mut self, message: InternalMessage) -> Result<(), std::io::Error> {
-        for courier in self.courriers.iter_mut() {
-            courier.send(message.clone()).await;
+    pub async fn notify(&mut self, _message: &InternalMessage) -> Result<(), std::io::Error> {
+        for _courier in self.courriers.iter_mut() {
+            // Need to provide some abstraction for courriers to receive an update broadcast.
         }
         Ok(())
     }
@@ -71,7 +71,7 @@ impl BlockingOfficer {
         self.actor.send(message);
     }
 
-    pub async fn notify(&mut self, message: InternalMessage) -> Result<(), std::io::Error> {
+    pub async fn notify(&mut self, message: &InternalMessage) -> Result<(), std::io::Error> {
         let _ = self.officer.notify(message).await;
         Ok(())
     }
