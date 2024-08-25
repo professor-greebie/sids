@@ -1,7 +1,9 @@
 
 use std::io::{Error, ErrorKind};
 
-use super::{actor::{Actor, ActorTrait, BlockingActor}, actor_ref::{ActorRef, BlockingActorRef, GuardianActorRef}, guardian::Guardian, messages::{ InternalMessage, Message, ResponseMessage}};
+use crate::actors::actor::{ActorImpl, BlockingActorImpl};
+
+use super::{actor::Actor, actor_ref::{ActorRef, BlockingActorRef, GuardianActorRef}, guardian::Guardian, messages::{ GuardianMessage, Message, ResponseMessage}};
 use log::info;
 
 
@@ -16,17 +18,10 @@ use log::info;
     /// ```rust
     /// use sids::actors::actor_system::ActorSystem;
     /// use sids::actors::messages::{Message, ResponseMessage};
-    /// use sids::actors::officer::SelectActor;
     /// 
     /// pub async fn run_system() {
     /// 
     ///     let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
-
-    ///     let mut actor_system = ActorSystem::new();
-    ///     
-    ///    actor_system.create_officer<T>(SelectActor::LogActor).await.unwrap();
-    ///    actor_system.dispatch(0, Message::GetId).await;
-    ///     actor_system.dispatch(0, Message::Terminate).await;
     /// }
     /// 
     /// ```
@@ -60,17 +55,17 @@ impl ActorSystem {
     }
     pub (super) async fn stop_system(&mut self) {
         info!("Stopping actor system");
-        let msg = Message::Terminate;
+        let msg = GuardianMessage::Terminate;
          self.guardian_ref.send(msg).await;
     }
-    pub (super) async fn create_officer<T: ActorTrait + 'static>(&mut self, name: Option<String>, actor_type: T) -> Result<(), Error> {
+    pub (super) async fn create_officer<T: Actor + 'static>(&mut self, name: Option<String>, actor_type: T) -> Result<(), Error> {
         info!("Creating officer called {}", name.clone().unwrap_or("Unnamed".to_string()));
         // Need to figure out how to get the actor to the officer. Should we create the actor ref here?)
         let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
-        let (tx2, rx2) = tokio::sync::mpsc::channel::<InternalMessage>(super::SIDS_DEFAULT_BUFFER_SIZE);
-        let actor = Actor::new(name, actor_type, rx2);
+        let (tx2, rx2) = tokio::sync::mpsc::channel::<Message>(super::SIDS_DEFAULT_BUFFER_SIZE);
+        let actor = ActorImpl::new(name, actor_type, rx2);
         let actor_ref = ActorRef::new(actor, tx2);
-        let msg = Message::CreateOfficer { officer_type: actor_ref, responder: tx  }; // TODO: change this to the correct message for creating an officer
+        let msg = GuardianMessage::CreateOfficer { officer_type: actor_ref, responder: tx  }; // TODO: change this to the correct message for creating an officer
         self.guardian_ref.send(msg).await;
         match _rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
@@ -79,15 +74,15 @@ impl ActorSystem {
         }
     }
 
-    pub (super) async fn create_blocking_officer<T: ActorTrait + 'static>(&mut self, actor_type: T, name: Option<String>) -> Result<(), Error> {
+    pub (super) async fn create_blocking_officer<T: Actor + 'static>(&mut self, actor_type: T, name: Option<String>) -> Result<(), Error> {
         info!("Creating blocking officer called {}", name.clone().unwrap_or("Unnamed".to_string()));
-        let (tx2, rx2) = std::sync::mpsc::channel::<InternalMessage>();
+        let (tx2, rx2) = std::sync::mpsc::channel::<Message>();
         // create actor reference here and send it to the guardian.
         let (tx, rx) = std::sync::mpsc::channel::<ResponseMessage>();
-        let actor = BlockingActor::new(name, actor_type, rx2);
+        let actor = BlockingActorImpl::new(name, actor_type, rx2);
         let actor_ref = BlockingActorRef::new(actor, tx2);
         // send message to guardian to create officer
-        let msg = Message::CreateBlockingOfficer { officer_type: actor_ref, responder: tx };
+        let msg = GuardianMessage::CreateBlockingOfficer { officer_type: actor_ref, responder: tx };
         self.guardian_ref.send(msg).await;
         let _ = match rx.recv() {
             Ok(ResponseMessage::Success) => Ok(()),
@@ -100,7 +95,7 @@ impl ActorSystem {
     pub async fn remove_officer(&mut self, officer_id: u32) -> Result<(), Error> {
         // send message to guardian to remove officer
         let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
-        let msg = Message::RemoveOfficer { officer_id, responder: tx };
+        let msg = GuardianMessage::RemoveOfficer { officer_id, responder: tx };
         self.guardian_ref.send(msg).await;
        let _ = match _rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
@@ -110,20 +105,20 @@ impl ActorSystem {
         Ok(())
     }
 
-    pub async fn dispatch(&mut self, officer_id : u32, message: InternalMessage, blocking: bool) {
+    pub async fn dispatch(&mut self, officer_id : u32, message:Message, blocking: bool) {
         info!("Dispatching message to actor system");
         
-        self.guardian_ref.send(Message::OfficerMessage { officer_id, message, blocking }).await;
+        self.guardian_ref.send(GuardianMessage::OfficerMessage { officer_id, message, blocking }).await;
     
          // convert to correct message type when available
     }
 
-    pub async fn add_courrier<T: ActorTrait + 'static>(&mut self, officer_id: u32, courrier_type: T, name: Option<String>, blocking: bool) -> Result<(), Error> {
+    pub async fn add_courrier<T: Actor + 'static>(&mut self, officer_id: u32, courrier_type: T, name: Option<String>, blocking: bool) -> Result<(), Error> {
         let (tx, rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
-        let (tx2, rx2) = tokio::sync::mpsc::channel::<InternalMessage>(super::SIDS_DEFAULT_BUFFER_SIZE);
-        let actor = Actor::new(name, courrier_type, rx2);
+        let (tx2, rx2) = tokio::sync::mpsc::channel::<Message>(super::SIDS_DEFAULT_BUFFER_SIZE);
+        let actor = ActorImpl::new(name, courrier_type, rx2);
         let actor_ref = ActorRef::new(actor, tx2);
-        let msg = Message::AddCourrier { officer_id: officer_id , courrier_type: actor_ref, responder: tx, blocking }; // TODO: convert to correct message type when available
+        let msg = GuardianMessage::AddCourrier { officer_id: officer_id , courrier_type: actor_ref, responder: tx, blocking }; // TODO: convert to correct message type when available
         self.guardian_ref.send(msg).await;
         match rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
@@ -134,7 +129,7 @@ impl ActorSystem {
 
     pub async fn remove_courrier(&mut self, officer_id: u32, courrier_id: u32, blocking: bool) -> Result<(), Error> {
         let (tx, rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
-        let msg = Message::RemoveCourrier { officer_id: officer_id, courrier_id: courrier_id, responder: tx, blocking }; // TODO: convert to correct message type when available
+        let msg = GuardianMessage::RemoveCourrier { officer_id: officer_id, courrier_id: courrier_id, responder: tx, blocking }; // TODO: convert to correct message type when available
         self.guardian_ref.send(msg).await;
         match rx.await {
             Ok(ResponseMessage::Success) => Ok(()),
@@ -143,9 +138,9 @@ impl ActorSystem {
         }
     }
 
-    pub async fn notify_courriers(&mut self, officer_id: u32, message: InternalMessage, blocking: bool) -> Result<(), Error> {
+    pub async fn notify_courriers(&mut self, officer_id: u32, message:Message, blocking: bool) -> Result<(), Error> {
         let (tx, rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
-        let msg = Message::NotifyCourriers { officer_id, message, responder: tx, blocking };
+        let msg = GuardianMessage::NotifyCourriers { officer_id, message, responder: tx, blocking };
         self.guardian_ref.send(msg).await;
         match rx.await {
             Ok(ResponseMessage::Success) => Ok(()),

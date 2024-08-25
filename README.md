@@ -37,18 +37,23 @@ to notify a higher level actor (usually the guardian) about the result, often a 
 
 ```rust
 
-use sids::actors::actor::ActorTrait;
+use sids::actors::actor::Actor;
 
 
 // you can include some attributes like a name if you wish
 struct MyActor;
-impl ActorTrait for MyActor where MyActor: 'static {
+impl Actor for MyActor where MyActor: 'static {
     // in future this may not need to be async
-    async fn receive(&mut self, message: InternalMessage) {
+    async fn receive(&mut self, message: Message) {
+        // The `Message` enum carries all possible messages in the system.
+        // Customization may be available in the future, but for now, it is also possible
+        // to use the StringMessage variant to provide custom messages.
         match message {
-            InternalMessage::StringMessage { string } => 
+            Message::StringMessage { string } => 
+                // custom options here
+                // as in "if string == 'hello' => println("hello there friend");"
                 info!("Received message {}", string),
-            InternalMessage::RequestStatus { responder } {
+            Message::RequestStatus { responder } {
                 responder.send(ResponseMessage::Ok)
             }
         },
@@ -73,7 +78,7 @@ actor, you simple do:
 send_message_to_officer_enum(
     &actor_system, // the actor system
     0, // the officer id, currently a simple Vec index for now
-    InternalMessage::RequestStatus, // the message you wish to send
+    Message::RequestStatus, // the message you wish to send
     false // whether the actor is a thread-blocking type (see below)
     );
 

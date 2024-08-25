@@ -11,17 +11,17 @@ static SIDS_DEFAULT_BUFFER_SIZE: usize = 100;
 pub mod api {
     use log::info;
 
-    use super::messages::InternalMessage;
+    use super::messages::Message;
 
     use crate::actors::actor_system::ActorSystem;
 
-    use super::actor::ActorTrait;
+    use super::actor::Actor;
 
     pub fn start_actor_system() -> ActorSystem {
         ActorSystem::new()
     }
 
-    pub async fn spawn_officer<T: ActorTrait + 'static>(
+    pub async fn spawn_officer<T: Actor + 'static>(
         actor_system: &mut ActorSystem,
         name: Option<String>, 
         actor_type: T,
@@ -34,7 +34,7 @@ pub mod api {
         actor_system
     }
 
-    pub async fn spawn_blocking_officer<T: ActorTrait + 'static>(
+    pub async fn spawn_blocking_officer<T: Actor + 'static>(
         actor_system: &mut ActorSystem,
         name: Option<String>, 
         actor_type: T,
@@ -46,7 +46,7 @@ pub mod api {
         actor_system
     }
 
-    pub async fn spawn_courrier<T: ActorTrait + 'static>(
+    pub async fn spawn_courrier<T: Actor + 'static>(
         actor_system: &mut ActorSystem,
         officer_id: u32,
         courrier_type: T,
@@ -94,7 +94,7 @@ pub mod api {
         message: String,
         blocking: bool
     ) -> &mut ActorSystem {
-        let message = InternalMessage::StringMessage { message};
+        let message = Message::StringMessage { message};
         actor_system
             .dispatch(officer_id, message, blocking)
             .await;
@@ -104,7 +104,7 @@ pub mod api {
     pub async fn send_message_to_officer_enum (
         actor_system: &mut ActorSystem,
         officer_id: u32,
-        message: InternalMessage,
+        message: Message,
         blocking: bool
     ) -> &mut ActorSystem {
         actor_system
@@ -116,13 +116,13 @@ pub mod api {
     #[cfg(test)]
     mod tests {
 
-        use crate::actors::{actor::ActorTrait, messages::InternalMessage};
+        use crate::actors::{actor::Actor, messages::Message};
 
         use super::*;
 
         struct Logging;
-        impl ActorTrait for Logging {
-            fn receive(&mut self, message: InternalMessage) {
+        impl Actor for Logging {
+            fn receive(&mut self, message: Message) {
                 log::info!("Logging message: {:?}", message);
             }
 

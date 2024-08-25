@@ -8,11 +8,11 @@ use super::actor_ref::{ActorRef, BlockingActorRef};
 /// The guardian actor will create the responders to allow for the officers to communicate back to the guardian
 /// for status updates and other messages.
 #[derive(Debug)]
-pub (super) enum Message {
+pub (super) enum GuardianMessage {
     Terminate,
     OfficerMessage {
         officer_id: u32,
-        message: InternalMessage,
+        message: Message,
         blocking: bool,
     },
     CreateOfficer {
@@ -41,7 +41,7 @@ pub (super) enum Message {
     },
     NotifyCourriers {
         officer_id: u32,
-        message: InternalMessage,
+        message: Message,
         responder: tokio::sync::oneshot::Sender<ResponseMessage>,
         blocking: bool,
     },
@@ -53,7 +53,7 @@ pub (super) enum Message {
 ///
 /// All responders created by these items ought to be created by the guardian actor.
 #[derive(Debug)]
-pub enum InternalMessage {
+pub enum Message {
     StringMessage {
         message: String,
     },
