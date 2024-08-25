@@ -1,8 +1,7 @@
 use log::info;
 
 use super::actor_ref::{ActorRef, BlockingActorRef};
-use super::messages::InternalMessage;
-use super::messages;
+use super::messages::Message;
 
 
 
@@ -28,7 +27,7 @@ impl Officer {
         }
     }
 
-    pub async fn send(&mut self, message: messages::InternalMessage) {
+    pub async fn send(&mut self, message: Message) {
         info!(actor="officer"; "Sending message to officer {}.", self._id);
         self.actor.send(message).await;
     }
@@ -45,7 +44,7 @@ impl Officer {
 
 
     /// Send a message to all courriers.
-    pub async fn notify(&mut self, _message: &InternalMessage) -> Result<(), std::io::Error> {
+    pub fn notify(&mut self, _message: &Message) -> Result<(), std::io::Error> {
         for _courier in self.courriers.iter_mut() {
             // Need to provide some abstraction for courriers to receive an update broadcast.
         }
@@ -66,13 +65,13 @@ impl BlockingOfficer {
         }
     }
 
-    pub fn send(&mut self, message: messages::InternalMessage) {
+    pub fn send(&mut self, message: Message) {
         info!(actor="BlockingOfficer"; "Sending message to BlockingOfficer");
         self.actor.send(message);
     }
 
-    pub async fn notify(&mut self, message: &InternalMessage) -> Result<(), std::io::Error> {
-        let _ = self.officer.notify(message).await;
+    pub fn notify(&mut self, message: &Message) -> Result<(), std::io::Error> {
+        let _ = self.officer.notify(message);
         Ok(())
     }
 

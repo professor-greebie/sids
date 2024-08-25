@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 
 
 use super::actor::create_dummy_actor;
-use super::messages::InternalMessage;
+use super::messages::{GuardianMessage, Message};
 use super::officer::BlockingOfficer;
 use super::actor_ref::{ActorRef, BlockingActorRef};
 use super::{
@@ -24,14 +24,14 @@ trait OfficerFactory {
 }
 
 pub(super) struct Guardian {
-    pub (super) receiver: mpsc::Receiver<messages::Message>,
+    pub (super) receiver: mpsc::Receiver< GuardianMessage>,
     pub (super) officers: Vec<Officer>,
     pub (super) blocking_officers: Vec<BlockingOfficer>,
 }
 
 
 impl Guardian {
-    pub(super) fn new(receiver: tokio::sync::mpsc::Receiver::<messages::Message>) -> Guardian {
+    pub(super) fn new(receiver: tokio::sync::mpsc::Receiver::<GuardianMessage>) -> Guardian {
         Guardian {
             receiver,
             officers: Vec::new(),
@@ -39,23 +39,23 @@ impl Guardian {
         }
     }
 
-    pub (super) async fn receive(&mut self, message: messages::Message) {
+    pub (super) async fn receive(&mut self, message: GuardianMessage) {
 
         match message {
-            messages::Message::CreateOfficer { officer_type, responder } => {
+            GuardianMessage::CreateOfficer { officer_type, responder } => {
 
                 self.create_officer(officer_type).expect("Failed to create officer");
                 responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
             }
-            messages::Message::CreateBlockingOfficer { officer_type, responder } => {
+             GuardianMessage::CreateBlockingOfficer { officer_type, responder } => {
                 self.create_blocking_officer(officer_type).expect("Failed to create officer");
                 responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
             }
-            messages::Message::RemoveOfficer { officer_id, responder } => {
+             GuardianMessage::RemoveOfficer { officer_id, responder } => {
                 self.remove_officer(officer_id).expect("Failed to remove officer");
                 responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
             }
-            messages::Message::OfficerMessage { officer_id,  message, blocking } => {
+             GuardianMessage::OfficerMessage { officer_id,  message, blocking } => {
                 info!("Guardian received message to send message to {}", officer_id);
                 if blocking {
                     self.send_message_to_blocking_officer(officer_id, message).await;
@@ -63,7 +63,7 @@ impl Guardian {
                     self.send_message_to_officer(officer_id, message).await;
                 }
             }
-            messages::Message::AddCourrier { officer_id, courrier_type, responder , blocking} => {
+             GuardianMessage::AddCourrier { officer_id, courrier_type, responder , blocking} => {
                 if blocking {
                     if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
                         blocking_officer.subscribe(courrier_type);
@@ -74,22 +74,22 @@ impl Guardian {
                 }
             }
             
-            messages::Message::NotifyCourriers { officer_id, message, responder, blocking} => {
+             GuardianMessage::NotifyCourriers { officer_id, message, responder, blocking} => {
                 info!("Guardian received message: {:?}", message);
 
                 // broadcast notifications require that actors can receive a cloneable message type or a borrowed message type
                 // might not be necessary for the current implementation but can be build in if its desired.
                 if blocking {
                     if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
-                        blocking_officer.notify(&message).await.expect("Failed to notify courriers");
+                        blocking_officer.notify(&message).unwrap();
                     }
                 } else
                 if let Some(officer) = self.officers.get_mut(officer_id as usize) {
-                    officer.notify(&message).await.expect("Failed to notify courriers");
+                    officer.notify(&message).unwrap();
                 }
                 responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
             } 
-            messages::Message::RemoveCourrier { officer_id, courrier_id, responder, blocking} => {
+             GuardianMessage::RemoveCourrier { officer_id, courrier_id, responder, blocking} => {
                 if blocking {
                     if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
                         blocking_officer.unsubscribe(courrier_id);
@@ -99,7 +99,7 @@ impl Guardian {
                 self.remove_courrier(officer_id, courrier_id).expect("Failed to remove courrier");
                 responder.send(messages::ResponseMessage::Success).expect("Failed to send response");
             }},
-            messages::Message::Terminate => {
+             GuardianMessage::Terminate => {
                 info!("Guardian received terminate message");
                 //self.stop_system().await;
             },
@@ -108,14 +108,14 @@ impl Guardian {
         
     }
 
-    async fn send_message_to_officer(&mut self, officer_id: u32, message: InternalMessage) {
+    async fn send_message_to_officer(&mut self, officer_id: u32, message: Message) {
         info!("Sending message to officer {}", officer_id);
         if let Some(officer) = self.officers.get_mut(officer_id as usize) {
             officer.send(message).await;
         }
     }
 
-    async fn send_message_to_blocking_officer(&mut self, officer_id: u32, message: InternalMessage) {
+    async fn send_message_to_blocking_officer(&mut self, officer_id: u32, message: Message) {
         info!("Sending message to blocking officer {}", officer_id);
         if let Some(blocking_officer) = self.blocking_officers.get_mut(officer_id as usize) {
 
@@ -154,7 +154,7 @@ impl OfficerFactory for Guardian {
             }
         };
         // do we terminate the officer here?
-        //officer_to_remove.send(messages::Message::Terminate).await;
+        //officer_to_remove.send( GuardianMessage::Terminate).await;
         self.officers.remove(officer_id as usize);
         Ok(())
     }

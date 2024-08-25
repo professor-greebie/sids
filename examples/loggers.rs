@@ -1,9 +1,9 @@
 extern crate sids;
 use env_logger::{Builder, Env};
 use log::info;
-use sids::actors::actor::ActorTrait;
+use sids::actors::actor::Actor;
 use sids::actors::api::*;
-use sids::actors::messages::InternalMessage;
+use sids::actors::messages::Message;
 
 // Idea here is that using the logs, we can provide an animation of actors receiving messages and sending messages to each other.
 
@@ -24,15 +24,15 @@ impl SampleActor {
     }
 }
 
-impl ActorTrait for SampleActor
+impl Actor for SampleActor
 where
     SampleActor: 'static,
 {
-    fn receive(&mut self, message: InternalMessage) {
+    fn receive(&mut self, message: Message) {
         let name = self.name.clone();
         // Log the message received by the actor.
         info!("Actor {} received message: {:?}", self.name, message);
-        if let InternalMessage::StringMessage { message } = message {
+        if let Message::StringMessage { message } = message {
             info!("Actor {} received string message: {}", name, message);
         }
     }
@@ -40,14 +40,14 @@ where
 
 struct SampleBlockingActor;
 
-impl ActorTrait for SampleBlockingActor
+impl Actor for SampleBlockingActor
 where
     SampleBlockingActor: 'static,
 {
-    fn receive(&mut self, message: InternalMessage) {
+    fn receive(&mut self, message: Message) {
         // do nothing
-        info!("Received message in blocking actor via ActorTrait");
-        if let InternalMessage::StringMessage { message } = message {
+        info!("Received message in blocking actor via Actor trait");
+        if let Message::StringMessage { message } = message {
             info!("Blocking actor received string message: {}", message);
         }
     }
@@ -87,7 +87,7 @@ async fn start_sample_actor_system() {
         true,
     )
     .await;
-    send_message_to_officer_enum(&mut actor_system, 0, InternalMessage::Terminate, false).await;
+    send_message_to_officer_enum(&mut actor_system, 0, Message::Terminate, false).await;
 }
 
 #[tokio::main]

@@ -3,7 +3,7 @@ extern crate sids;
 use env_logger::{Builder, Env};
 use log::info;
 use sids::actors::community::collector::Collector;
-use sids::actors::messages::InternalMessage;
+use sids::actors::messages::Message;
 
 // NOTE: This will collect some data from the internet and store it in the current directory.
 
@@ -31,9 +31,9 @@ async fn start_sample_actor_system() {
     let (tx3, rx3) = tokio::sync::oneshot::channel();
 
 
-    let message1 = InternalMessage::GetUrl { url: "https://www.rust-lang.org".to_string(), output: "./rust.html_sample".to_string(), responder: tx1 };
-    let message2 = InternalMessage::GetUrl { url: "https://www.google.com".to_string(), output: "./google.html_sample".to_string(), responder: tx2 };
-    let message3 = InternalMessage::GetUrl { url: "https://www.github.com".to_string(), output: "./github.html_sample".to_string(), responder: tx3 };
+    let message1 = Message::GetUrl { url: "https://www.rust-lang.org".to_string(), output: "./rust.html_sample".to_string(), responder: tx1 };
+    let message2 = Message::GetUrl { url: "https://www.google.com".to_string(), output: "./google.html_sample".to_string(), responder: tx2 };
+    let message3 = Message::GetUrl { url: "https://www.github.com".to_string(), output: "./github.html_sample".to_string(), responder: tx3 };
     sids::actors::api::send_message_to_officer_enum(&mut actor_system, 0, message1, true).await;
     sids::actors::api::send_message_to_officer_enum(&mut actor_system, 1, message2, true).await;
     sids::actors::api::send_message_to_officer_enum(&mut actor_system, 2, message3, true).await;

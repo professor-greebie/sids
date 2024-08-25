@@ -3,21 +3,21 @@ use std::io::{Error, Write};
 use log::info;
 
 use crate::actors::{
-    actor::ActorTrait,
-    messages::{InternalMessage, ResponseMessage},
+    actor::Actor,
+    messages::{Message, ResponseMessage},
 };
 
 // Generic blocking actor that will be used to collect data via an http call.
 pub struct Collector;
 
-impl ActorTrait for Collector
+impl Actor for Collector
 where
     Collector: 'static,
 {
-    fn receive(&mut self, message: InternalMessage) {
+    fn receive(&mut self, message: Message) {
         // do nothing
         info!("Received message in blocking actor via ActorTrait");
-        if let InternalMessage::GetUrl {
+        if let Message::GetUrl {
             url,
             output,
             responder,
