@@ -1,6 +1,6 @@
 use crate::actors::actor::{run_a_blocking_actor, run_guardian};
 
-use super::actor::{ run_an_actor, Actor, ActorTrait, BlockingActor, BlockingActorTrait};
+use super::actor::{ run_an_actor, Actor, ActorTrait, BlockingActor};
 use super::guardian::Guardian;
 use super::messages::{InternalMessage, Message };
 use log::info;
@@ -49,7 +49,7 @@ pub struct BlockingActorRef {
 }
 
 impl BlockingActorRef{
-    pub (super) fn new<T: BlockingActorTrait + std::marker::Send +  'static>(actor : BlockingActor<T>, sender: std::sync::mpsc::Sender<InternalMessage>) -> Self {
+    pub (super) fn new<T: ActorTrait + std::marker::Send +  'static>(actor : BlockingActor<T>, sender: std::sync::mpsc::Sender<InternalMessage>) -> Self {
         info!(actor = "Blocking Actor"; "Spawning a Blocking Actor");
         std::thread::spawn(move | | {
             //
@@ -68,14 +68,14 @@ impl BlockingActorRef{
 mod tests {
 
     use super::*;
-    use crate::actors::actor::{blocking_actor_receive, ActorTrait, BlockingActorTrait};
+    use crate::actors::actor::ActorTrait;
     use super::super::messages::InternalMessage;
     use tokio::sync::mpsc;
 
     struct SampleActor;
         
     impl ActorTrait for SampleActor {
-        async fn receive(&mut self, _message: InternalMessage) {
+        fn receive(&mut self, _message: InternalMessage) {
             // do nothing
             info!("Received message");
         }
@@ -84,15 +84,9 @@ mod tests {
     struct SampleBlockingActor; 
 
     impl ActorTrait for SampleBlockingActor {
-        async fn receive(&mut self, message:InternalMessage) {
-            blocking_actor_receive(self, message).await;
-        }
-    }
-
-    impl BlockingActorTrait for SampleBlockingActor  {
-        
-        fn handle_message(&mut self, _message: InternalMessage) {
-            info!("Received message");
+        fn receive(&mut self, _message:InternalMessage) {
+            // do nothing
+            info!("Received message in blocking actor via ActorTrait");
         }
     }
 

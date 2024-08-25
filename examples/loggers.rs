@@ -1,7 +1,7 @@
 extern crate sids;
 use env_logger::{Builder, Env};
 use log::info;
-use sids::actors::actor::{ActorTrait, BlockingActorTrait};
+use sids::actors::actor::ActorTrait;
 use sids::actors::api::*;
 use sids::actors::messages::InternalMessage;
 
@@ -28,7 +28,7 @@ impl ActorTrait for SampleActor
 where
     SampleActor: 'static,
 {
-    async fn receive(&mut self, message: InternalMessage) {
+    fn receive(&mut self, message: InternalMessage) {
         let name = self.name.clone();
         // Log the message received by the actor.
         info!("Actor {} received message: {:?}", self.name, message);
@@ -44,21 +44,16 @@ impl ActorTrait for SampleBlockingActor
 where
     SampleBlockingActor: 'static,
 {
-    async fn receive(&mut self, message: InternalMessage) {
+    fn receive(&mut self, message: InternalMessage) {
         // do nothing
         info!("Received message in blocking actor via ActorTrait");
-        self.handle_message(message);
-    }
-}
-
-impl BlockingActorTrait for SampleBlockingActor {
-    fn handle_message(&mut self, _message: InternalMessage) {
-        info!("Received message to blocking actor");
-        if let InternalMessage::StringMessage { message } = _message {
+        if let InternalMessage::StringMessage { message } = message {
             info!("Blocking actor received string message: {}", message);
         }
     }
 }
+
+
 
 async fn start_sample_actor_system() {
     // Start an actor system and spawn a few officers with some actors that send messages to each other.
