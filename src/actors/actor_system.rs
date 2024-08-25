@@ -1,7 +1,7 @@
 
 use std::io::{Error, ErrorKind};
 
-use super::{actor::{Actor, ActorTrait, BlockingActor, BlockingActorTrait}, actor_ref::{ActorRef, BlockingActorRef, GuardianActorRef}, guardian::Guardian, messages::{ InternalMessage, Message, ResponseMessage}};
+use super::{actor::{Actor, ActorTrait, BlockingActor}, actor_ref::{ActorRef, BlockingActorRef, GuardianActorRef}, guardian::Guardian, messages::{ InternalMessage, Message, ResponseMessage}};
 use log::info;
 
 
@@ -79,7 +79,7 @@ impl ActorSystem {
         }
     }
 
-    pub (super) async fn create_blocking_officer<T: BlockingActorTrait + 'static>(&mut self, actor_type: T, name: Option<String>) -> Result<(), Error> {
+    pub (super) async fn create_blocking_officer<T: ActorTrait + 'static>(&mut self, actor_type: T, name: Option<String>) -> Result<(), Error> {
         info!("Creating blocking officer called {}", name.clone().unwrap_or("Unnamed".to_string()));
         let (tx2, rx2) = std::sync::mpsc::channel::<InternalMessage>();
         // create actor reference here and send it to the guardian.

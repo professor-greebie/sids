@@ -11,7 +11,7 @@ static SIDS_DEFAULT_BUFFER_SIZE: usize = 100;
 pub mod api {
     use log::info;
 
-    use super::{actor::BlockingActorTrait, messages::InternalMessage};
+    use super::messages::InternalMessage;
 
     use crate::actors::actor_system::ActorSystem;
 
@@ -34,7 +34,7 @@ pub mod api {
         actor_system
     }
 
-    pub async fn spawn_blocking_officer<T: BlockingActorTrait + 'static>(
+    pub async fn spawn_blocking_officer<T: ActorTrait + 'static>(
         actor_system: &mut ActorSystem,
         name: Option<String>, 
         actor_type: T,
@@ -122,7 +122,7 @@ pub mod api {
 
         struct Logging;
         impl ActorTrait for Logging {
-            async fn receive(&mut self, message: InternalMessage) {
+            fn receive(&mut self, message: InternalMessage) {
                 log::info!("Logging message: {:?}", message);
             }
 
