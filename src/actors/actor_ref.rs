@@ -12,13 +12,13 @@ pub(super) struct GuardianActorRef {
 }
 
 impl GuardianActorRef {
-    pub fn new(actor : Guardian, sender: tokio::sync::mpsc::Sender<GuardianMessage>) -> Self {
+    pub (super) fn new(actor : Guardian, sender: tokio::sync::mpsc::Sender<GuardianMessage>) -> Self {
         info!(actor = "Guardian"; "Spawning a Guardian actor");
         tokio::spawn(run_guardian(actor));
         GuardianActorRef { sender }
     }
 
-    pub async fn send(&self, message: GuardianMessage) {
+    pub (super) async fn send(&self, message: GuardianMessage) {
         info!("Sending message to Guardian");
         self.sender.send(message).await.expect("Failed to send message to Guardian");
     }
