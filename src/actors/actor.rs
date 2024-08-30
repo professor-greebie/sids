@@ -13,8 +13,7 @@ impl Actor for Dummy {
 pub (super) fn create_dummy_actor() -> ActorRef {
     let (tx, rx) = mpsc::channel(1);
     let actor = ActorImpl::new(None, Dummy, rx);
-    let actor_ref = ActorRef::new(actor, tx);
-    actor_ref
+    ActorRef::new(actor, tx)
 }
 
 

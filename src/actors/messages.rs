@@ -10,6 +10,16 @@ use super::actor_ref::{ActorRef, BlockingActorRef};
 #[derive(Debug)]
 pub (super) enum GuardianMessage {
     Terminate,
+    CountOfficers {
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+    },
+    CountCourriers {
+        officer_id: u32,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+    },
+    CountActors {
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+    },
     OfficerMessage {
         officer_id: u32,
         message: Message,
@@ -57,6 +67,36 @@ pub enum Message {
     StringMessage {
         message: String,
     },
+    StringResponse {
+        message: String,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+    },
+    StringResponseBlocking {
+        message: String,
+        responder: std::sync::mpsc::Sender<ResponseMessage>,
+    },
+    IntegerMessage {
+        number: i32,
+    },
+    IntegerResponse {
+        number: i32,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+    },
+    IntegerResponseBlocking {
+        number: i32,
+        responder: std::sync::mpsc::Sender<ResponseMessage>,
+    },
+    DoubleMessage {
+        number: f64,
+    },
+    DoubleResponse {
+        number: f64,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+    },
+    DoubleResponseBlocking {
+        number: f64,
+        responder: std::sync::mpsc::Sender<ResponseMessage>,
+    },
     RequestStatus {
         responder: tokio::sync::oneshot::Sender<ResponseMessage>,
     },
@@ -84,5 +124,8 @@ pub enum ResponseMessage {
     Terminated,
     Failure,
     Success,
+    Response(String),
+    ResponseCount(String, u32),
+
 }
 

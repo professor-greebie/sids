@@ -3,7 +3,7 @@ use env_logger::{Builder, Env};
 use log::info;
 use sids::actors::actor::Actor;
 use sids::actors::api::*;
-use sids::actors::messages::Message;
+use sids::actors::messages::{Message, ResponseMessage};
 
 // Idea here is that using the logs, we can provide an animation of actors receiving messages and sending messages to each other.
 
@@ -32,8 +32,9 @@ where
         let name = self.name.clone();
         // Log the message received by the actor.
         info!("Actor {} received message: {:?}", self.name, message);
-        if let Message::StringMessage { message } = message {
+        if let Message::StringResponse { message, responder } = message {
             info!("Actor {} received string message: {}", name, message);
+            responder.send(ResponseMessage::Success).unwrap();
         }
     }
 }
