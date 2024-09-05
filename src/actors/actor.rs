@@ -1,13 +1,7 @@
 use super::{actor_ref::ActorRef, guardian::Guardian, messages::Message};
+use super::community::generic::Dummy;
 use log::info;
 use tokio::sync::mpsc;
-
-struct Dummy;
-impl Actor for Dummy {
-    fn receive(&mut self, _message: Message) {
-        // do nothing
-    }
-}
 
 
 pub (super) fn create_dummy_actor() -> ActorRef {
