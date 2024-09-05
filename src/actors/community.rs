@@ -4,6 +4,7 @@
 /// 
 /// 
 
-
+#[cfg(feature = "streams")]
 pub mod source;
 pub mod collector;
+pub mod generic;

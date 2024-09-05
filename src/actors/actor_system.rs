@@ -159,10 +159,7 @@ impl ActorSystem {
 
     pub async fn dispatch(&mut self, officer_id : u32, message:Message, blocking: bool) {
         info!("Dispatching message to actor system");
-        
-        self.guardian_ref.send(GuardianMessage::OfficerMessage { officer_id, message, blocking }).await;
-        
-         // convert to correct message type when available
+        self.guardian_ref.send(GuardianMessage::OfficerMessage { officer_id, message, blocking }).await;        
     }
 
     pub async fn add_courrier<T: Actor + 'static>(&mut self, officer_id: u32, courrier_type: T, name: Option<String>, blocking: bool) -> Result<(), Error> {
