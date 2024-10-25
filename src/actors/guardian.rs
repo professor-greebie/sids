@@ -5,26 +5,42 @@ use tokio::sync::mpsc;
 
 use super::actor::create_dummy_actor;
 use super::actor_ref::{ActorRef, BlockingActorRef};
-use super::messages::{GuardianMessage, Message, ResponseMessage};
+use super::messages::{ ActorType, GuardianType, Message, ResponseMessage};
 use super::officer::BlockingOfficer;
 use super::officer::Officer;
 
 trait OfficerFactory {
-    fn create_officer(&mut self, officer_type: ActorRef) -> Result<(), Error>;
-    fn create_blocking_officer(&mut self, officer_type: BlockingActorRef) -> Result<(), Error>;
+    fn create_officer<T: Send>(&mut self, officer_type: ActorRef<T>) -> Result<(), Error>;
+    fn create_blocking_officer<T: Send>(&mut self, officer_type: BlockingActorRef<T>) -> Result<(), Error>;
     fn remove_officer(&mut self, officer_id: u32) -> Result<(), Error>;
-    fn add_courrier(&mut self, officer_id: u32, courrier_type: ActorRef) -> Result<(), Error>;
+    fn add_courrier<T: Send>(&mut self, officer_id: u32, courrier_type: ActorRef<T>) -> Result<(), Error>;
     fn remove_courrier(&mut self, officer_id: u32, courrier_id: u32) -> Result<(), Error>;
 }
 
+enum GuardianAction {
+    CreateBlockingOfficer,
+    CreateOfficer,
+    RemoveOfficer,
+    OfficerMessage,
+    AddCourrier,
+    NotifyCourriers,
+    RemoveCourrier,
+    Terminate,
+}
+
+struct GuardianMessage {
+    action: GuardianAction,
+    responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+}
+
 pub(super) struct Guardian {
-    pub(super) receiver: mpsc::Receiver<GuardianMessage>,
-    pub(super) officers: Vec<Officer>,
-    pub(super) blocking_officers: Vec<BlockingOfficer>,
+    pub(super) receiver: mpsc::Receiver<Message<GuardianType, GuardianMessage>>,
+    pub(super) officers: Vec<Officer<GuardianMessage>>,
+    pub(super) blocking_officers: Vec<BlockingOfficer<GuardianMessage>>,
 }
 
 impl Guardian {
-    pub(super) fn new(receiver: tokio::sync::mpsc::Receiver<GuardianMessage>) -> Guardian {
+    pub(super) fn new(receiver: tokio::sync::mpsc::Receiver<Message<GuardianType, GuardianMessage>>) -> Guardian {
         Guardian {
             receiver,
             officers: Vec::new(),
@@ -32,7 +48,7 @@ impl Guardian {
         }
     }
 
-    pub(super) async fn receive(&mut self, message: GuardianMessage) {
+    pub(super) async fn receive(&mut self, message: Message<GuardianType, GuardianMessage>) {
         match message {
             GuardianMessage::CreateOfficer {
                 officer_type,

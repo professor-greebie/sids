@@ -3,7 +3,7 @@ use std::io::{Error, ErrorKind};
 
 use crate::actors::actor::{ActorImpl, BlockingActorImpl};
 
-use super::{actor::Actor, actor_ref::{ActorRef, BlockingActorRef, GuardianActorRef}, channel_factory::ChannelFactory, guardian::Guardian, messages::{ GuardianMessage, Message, ResponseMessage}};
+use super::{actor::Actor, actor_ref::{ActorRef, BlockingActorRef}, channel_factory::ChannelFactory, guardian::Guardian, messages::{  ActorType, GuardianMessage, Mediator, Message, ResponseMessage}, SIDS_DEFAULT_BUFFER_SIZE};
 use log::info;
 use tokio::sync::{mpsc, oneshot};
 
@@ -27,7 +27,7 @@ use tokio::sync::{mpsc, oneshot};
     /// 
     /// ```
 pub struct ActorSystem {
-    guardian_ref : GuardianActorRef,
+    guardian_ref : ActorRef<Message<ActorType, GuardianMessage>>,
 }
 
 impl Default for ActorSystem {
@@ -52,6 +52,14 @@ impl ChannelFactory for ActorSystem {
 
     fn create_blocking_response_channel(&self) -> (std::sync::mpsc::Sender<ResponseMessage>, std::sync::mpsc::Receiver<ResponseMessage>) {
         std::sync::mpsc::channel::<ResponseMessage>()
+    }
+    
+    fn create_typed_actor_channel<T>(&self) -> (mpsc::Sender<MessageImpl<T>>, mpsc::Receiver<MessageImpl<T>>) {
+        mpsc::channel::<MessageImpl<T>>(SIDS_DEFAULT_BUFFER_SIZE)
+    }
+    
+    fn create_typed_response_channel<T>(&self) -> (oneshot::Sender<ResponseMessageImpl<T>>, oneshot::Receiver<ResponseMessageImpl<T>>) {
+        oneshot::channel::<ResponseMessageImpl<T>>()
     }
 }
 
@@ -157,7 +165,7 @@ impl ActorSystem {
         Ok(())
     }
 
-    pub async fn dispatch(&mut self, officer_id : u32, message:Message, blocking: bool) {
+    pub async fn dispatch<T>(&mut self, officer_id : u32, message:MessageImpl<T>, blocking: bool) {
         info!("Dispatching message to actor system");
         self.guardian_ref.send(GuardianMessage::OfficerMessage { officer_id, message, blocking }).await;        
     }

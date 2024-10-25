@@ -12,7 +12,16 @@ fn get_loggings() {
     Builder::from_env(env).init()
 }
 
-// Sample blocking actor that will be used to collect data from the internet.
+#[derive(Debug, Deserialize, Serialize)]
+struct Post {
+    user_id: u32,
+    id: u32,
+    title: String,
+    body: String,
+}
+
+
+
 
 
 
@@ -20,6 +29,8 @@ async fn start_sample_actor_system() {
     let collector1 = Collector;
     let collector2 = Collector;
     let collector3 = Collector;
+    let serde_actor1 = SerdeActor::<Post>;  // actor to handle the deserialization of the json
+    let json_url = "https://jsonplaceholder.typicode.com/posts";
     let mut actor_system = sids::actors::api::start_actor_system();
     sids::actors::api::spawn_blocking_officer(&mut actor_system, Some("Collector 1".to_string()), collector1).await;
     sids::actors::api::spawn_blocking_officer(&mut actor_system, Some("Collector 2".to_string()), collector2).await;
@@ -31,7 +42,7 @@ async fn start_sample_actor_system() {
     let (tx3, rx3) = tokio::sync::oneshot::channel();
 
 
-    let message1 = Message::GetUrl { url: "https://www.rust-lang.org".to_string(), output: "./rust.html_sample".to_string(), responder: tx1 };
+    let message1 = Message::GetUrl { url: json_url.to_string(), output: "./rust.html_sample".to_string(), responder: tx1 };
     let message2 = Message::GetUrl { url: "https://www.google.com".to_string(), output: "./google.html_sample".to_string(), responder: tx2 };
     let message3 = Message::GetUrl { url: "https://www.github.com".to_string(), output: "./github.html_sample".to_string(), responder: tx3 };
     sids::actors::api::send_message_to_officer_enum(&mut actor_system, 0, message1, true).await;

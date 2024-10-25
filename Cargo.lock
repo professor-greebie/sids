@@ -1272,6 +1272,7 @@ dependencies = [
  "reqwest",
  "rustls",
  "serde",
+ "serde_json",
  "tokio",
  "trait-variant",
 ]

@@ -1,55 +1,36 @@
-use crate::actors::actor::{run_a_blocking_actor, run_guardian};
+use crate::actors::actor::run_a_blocking_actor;
 
 use super::actor::{ run_an_actor, Actor, ActorImpl, BlockingActorImpl};
-use super::guardian::Guardian;
-use super::messages::{GuardianMessage, Message };
+use super::messages::{ActorType, Message};
 use log::info;
 
 
-
-pub(super) struct GuardianActorRef {
-    sender: tokio::sync::mpsc::Sender<GuardianMessage>,
-}
-
-impl GuardianActorRef {
-    pub (super) fn new(actor : Guardian, sender: tokio::sync::mpsc::Sender<GuardianMessage>) -> Self {
-        info!(actor = "Guardian"; "Spawning a Guardian actor");
-        tokio::spawn(run_guardian(actor));
-        GuardianActorRef { sender }
-    }
-
-    pub (super) async fn send(&self, message: GuardianMessage) {
-        info!("Sending message to Guardian");
-        self.sender.send(message).await.expect("Failed to send message to Guardian");
-    }
-
-}
-
-
 #[derive(Debug)]
-pub (super) struct ActorRef {
-    sender: tokio::sync::mpsc::Sender<Message>,
+pub (super) struct ActorRef<R> 
+where R: Send + 'static {
+    sender: tokio::sync::mpsc::Sender<Message<ActorType, R>>,
 }
 
-impl ActorRef {
-    pub fn new<T: Actor + 'static>(actor : ActorImpl<T>, sender: tokio::sync::mpsc::Sender<Message>) -> Self {
+impl <R: Send> ActorRef <R> {
+    pub fn new<T: Actor<R> + 'static>(actor : ActorImpl<T, R>, sender: tokio::sync::mpsc::Sender<Message<ActorType, R>>) -> Self {
         info!(actor = "Log Actor"; "An actor is being spawned");
-        tokio::spawn(run_an_actor::<T>(actor));
+        tokio::spawn(run_an_actor::<R, T>(actor));
         ActorRef { sender }
     }
 
-    pub async fn send(&self, message: Message) {
+    pub async fn send(&self, message: Message<ActorType, R>) {
         let _ = self.sender.send(message).await;
     }
 }
 
 #[derive(Debug)]
-pub struct BlockingActorRef {
-    sender: std::sync::mpsc::Sender<Message>,
+pub struct BlockingActorRef<R> 
+where R : Send + 'static {
+    sender: std::sync::mpsc::Sender<Message<ActorType, R>>,
 }
 
-impl BlockingActorRef{
-    pub (super) fn new<T: Actor + std::marker::Send +  'static>(actor : BlockingActorImpl<T>, sender: std::sync::mpsc::Sender<Message>) -> Self {
+impl <R: Send> BlockingActorRef <R> {
+    pub (super) fn new<T: Actor<R> + std::marker::Send +  'static>(actor : BlockingActorImpl<T, R>, sender: std::sync::mpsc::Sender<Message<ActorType, R>>) -> Self {
         info!(actor = "Blocking Actor"; "Spawning a Blocking Actor");
         std::thread::spawn(move | | {
             //
@@ -59,7 +40,7 @@ impl BlockingActorRef{
             sender
         }
     }
-    pub fn send(&self, message: Message) {
+    pub fn send(&self, message: Message<ActorType, R>) {
         let _ = self.sender.send(message);
     }
 }
@@ -68,80 +49,67 @@ impl BlockingActorRef{
 mod tests {
 
     use super::*;
-    use crate::actors::{actor::Actor, messages::ResponseMessage};
+    use crate::actors::{actor::{Actor, ActorImpl, BlockingActorImpl}, messages::{AnyActor, ResponseMessage}};
     use super::super::messages::Message;
     use tokio::sync::mpsc;
 
+    struct Payload {
+        message: String,
+        responder: tokio::sync::oneshot::Sender<ResponseMessage>,
+    }
+
+    struct BlockingPayload {
+        message: String,
+        responder: std::sync::mpsc::Sender<ResponseMessage>,
+    }
+
     struct SampleActor;
         
-    impl Actor for SampleActor {
-        fn receive(&mut self, _message: Message) {
+    impl Actor<Payload> for SampleActor {
+        
+        fn receive(&mut self, message: Message<ActorType, Payload>) {
             // do nothing
             info!("Received message");
-            if let Message::StringResponse { message, responder } = _message {
-                info!("Received message: {}", message);
-                let _ = responder.send(ResponseMessage::Success).expect("Failed to send response");
-            }
+            let _ = message.payload.responder.send(ResponseMessage::SUCCESS).expect("Failed to send response");
         }
     }
 
     struct SampleBlockingActor; 
 
-    impl Actor for SampleBlockingActor {
-        fn receive(&mut self, _message: Message) {
+    impl Actor<BlockingPayload> for SampleBlockingActor {
+        fn receive(&mut self, message: Message<ActorType, BlockingPayload>) {
             // do nothing
-            info!("Received message in blocking actor via ActorTrait");
-            if let Message::StringResponseBlocking { message, responder } = _message {
-                info!("Received message: {}", message);
-                let _ = responder.send(ResponseMessage::Success);
-            }
+            let _ = message.payload.responder.send(ResponseMessage::SUCCESS).expect("Failed to send response");
         }
-    }
-
-    #[tokio::test]
-    async fn test_guardian_actor_ref() {
-        // guardian channel
-        let (_tx, rx) = mpsc::channel::<GuardianMessage>(1);
-        let actor = Guardian::new(rx);
-        let _guardian_actor_ref = GuardianActorRef::new(actor, _tx);
-        assert!(_guardian_actor_ref.sender.capacity() == 1);
-        let test_actor = SampleActor;
-        // officer channel
-        let (_tx, rx) = mpsc::channel::<Message>(1);
-        let actor = ActorImpl::new(None, test_actor, rx);
-        let _actor_ref = ActorRef::new::<SampleActor>(actor, _tx);
-        // response channel
-        let (rs_tx, rs_rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
-        let message = GuardianMessage::CreateOfficer { officer_type: _actor_ref, responder: rs_tx };
-        let _ = _guardian_actor_ref.send(message).await;
-        let response = rs_rx.await.expect("Failed to receive response");
-        assert!(response == ResponseMessage::Success);
     }
 
     #[tokio::test]
     async fn test_actor_ref() {
         let sample = SampleActor;
-        let (_tx, rx) = mpsc::channel::<Message>(1);
+        let (_tx, rx) = mpsc::channel::<Message<ActorType, Payload>>(1);
         let (rs_tx, rs_rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
         let actor = ActorImpl::new(None, sample, rx);
         let _actor_ref = ActorRef::new::<SampleActor>(actor, _tx);
         assert!(_actor_ref.sender.capacity() == 1);
-        let message = Message::StringResponse { message: "Test".to_string(), responder: rs_tx };
+        let payload = Payload { message: "Test".to_string(), responder: rs_tx };
+        let message = Message { for_actor: ActorType::Officer(AnyActor), payload: payload };
         let _ = _actor_ref.send(message).await;
         let response = rs_rx.await.expect("Failed to receive response");
-        assert!(response == ResponseMessage::Success);
+        assert!(response == ResponseMessage::SUCCESS);
     }
 
     #[test]
     fn test_blocking_actor_ref() {
-        let (_tx, rx) = std::sync::mpsc::channel::<Message>();
-        let actor = BlockingActorImpl::new(None, SampleBlockingActor, rx);
-        let _actor_ref = BlockingActorRef::new( actor, _tx,);
-        assert!(_actor_ref.send(Message::StringMessage { message: "Test".to_string() }) == ());
+        let sample = SampleBlockingActor;
+        let (_tx, rx) = std::sync::mpsc::channel::<Message<ActorType, BlockingPayload>>();
         let (rs_tx, rs_rx) = std::sync::mpsc::channel::<ResponseMessage>();
-        let message = Message::StringResponseBlocking { message: "Test".to_string(), responder: rs_tx };
-        let _ = _actor_ref.send(message);
+        let actor = BlockingActorImpl::new(None, sample, rx);
+        let actor_ref = BlockingActorRef::new( actor, _tx,);
+        
+        let payload = BlockingPayload { message: "Test".to_string(), responder: rs_tx };
+        let message = Message { for_actor: ActorType::Officer(AnyActor), payload: payload };
+        let _ = actor_ref.send(message);
         let response = rs_rx.recv().expect("Failed to receive response");
-        assert!(response == ResponseMessage::Success);
+        assert!(response == ResponseMessage::SUCCESS);
     }
 }

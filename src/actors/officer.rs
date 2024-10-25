@@ -1,25 +1,30 @@
 use log::info;
 
+use super::actor::Actor;
 use super::actor_ref::{ActorRef, BlockingActorRef};
-use super::messages::Message;
+use super::messages::{ActorType, Message};
 
 
 
+trait ChainLink {
+    fn next<T: Send>(&mut self, next: ActorRef<T>);
+    fn handle<R>(&self, message: Message<ActorType, R>);
+}
 
 /// The Officer struct is an actor that controls a number of courriers in an actor system.
 ///
 /// The intention of the officer is multi-faceted. It can be used to control the state of the courriers,
 /// and also to send messages to the courriers. The officer is also an actor, and can be used to send messages to itself.
 /// Officers will be controlled by the guardian actor, which is the main actor in the system.
-pub(super) struct Officer {
+pub(super) struct Officer<T: Send + 'static> {
     pub(super) _id: u32,
-    pub(super) actor: ActorRef,
-    pub(super) courriers: Vec<ActorRef>,
+    pub(super) actor: ActorRef<T>,
+    pub(super) courriers: Vec<ActorRef<T>>,
 }
 
-impl Officer {
+impl <T: Send + 'static> Officer<T> {
 
-    pub fn new(id: u32, actor: ActorRef) -> Officer {
+    pub fn new(id: u32, actor: ActorRef<T>) -> Officer<T> {
         Officer {
             _id: id,
             actor,
@@ -27,13 +32,13 @@ impl Officer {
         }
     }
 
-    pub async fn send(&mut self, message: Message) {
+    pub async fn send(&mut self, message: Message<ActorType, T>) {
         info!(actor="officer"; "Sending message to officer {}.", self._id);
         self.actor.send(message).await;
     }
 
     /// Add a courrier to the officer's list of courriers.
-    pub fn subscribe(&mut self, actor: ActorRef) {
+    pub fn subscribe(&mut self, actor: ActorRef<T>) {
         self.courriers.push(actor);
     }
 
@@ -44,7 +49,7 @@ impl Officer {
 
 
     /// Send a message to all courriers.
-    pub fn notify(&mut self, _message: &Message) -> Result<(), std::io::Error> {
+    pub fn notify<R>(&mut self, _message: Message<ActorType, R>) -> Result<(), std::io::Error> {
         for _courier in self.courriers.iter_mut() {
             // Need to provide some abstraction for courriers to receive an update broadcast.
         }
@@ -52,30 +57,30 @@ impl Officer {
     }
 }
 
-pub (super) struct BlockingOfficer {
-    pub (super) officer: Officer,
-    pub (super) actor: BlockingActorRef,
+pub (super) struct BlockingOfficer<T: Send + 'static> {
+    pub (super) officer: Officer<T>,
+    pub (super) actor: BlockingActorRef<T>,
 }
 
-impl BlockingOfficer {
-    pub fn new(officer: Officer, actor: BlockingActorRef) -> BlockingOfficer {
+impl <T: Send + 'static> BlockingOfficer<T> {
+    pub fn new(officer: Officer<T>, actor: BlockingActorRef<T>) -> BlockingOfficer<T> {
         BlockingOfficer {
             officer,
             actor,
         }
     }
 
-    pub fn send(&mut self, message: Message) {
+    pub fn send(&mut self, message: Message<ActorType, T>) {
         info!(actor="BlockingOfficer"; "Sending message to BlockingOfficer");
         self.actor.send(message);
     }
 
-    pub fn notify(&mut self, message: &Message) -> Result<(), std::io::Error> {
+    pub fn notify(&mut self, message: Message<ActorType, T>) -> Result<(), std::io::Error> {
         let _ = self.officer.notify(message);
         Ok(())
     }
 
-    pub fn subscribe(&mut self, actor: ActorRef) {
+    pub fn subscribe(&mut self, actor: ActorRef<T>) {
         self.officer.subscribe(actor);
     }
 
@@ -83,6 +88,21 @@ impl BlockingOfficer {
         self.officer.unsubscribe(actor_id);
     }
 
+}
+
+struct Courrier<T: Send + 'static> {
+    id: u32,
+    actor: ActorRef<T>,
+}
+
+impl <T: Send> ChainLink for Courrier<T> {
+    fn next<U: Send>(&mut self, next: ActorRef<U>) {
+        // do nothing
+    }
+
+    fn handle<U>(&self, message: Message<ActorType, U>) {
+        // do nothing
+    }
 }
 
 // grcov-excl-start

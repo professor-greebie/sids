@@ -6,5 +6,6 @@
 
 #[cfg(feature = "streams")]
 pub mod source;
+#[cfg(feature = "etl")]
 pub mod collector;
 pub mod generic;

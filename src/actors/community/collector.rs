@@ -64,3 +64,38 @@ impl Collector {
         Ok(())
     }
 }
+
+/// An actor that can serialize and deserialize messages between generic types and json objects.
+struct SerdeActor<T> where T: Serialize + Deserialize + Send + Clone + 'static {
+
+}
+
+impl<T> Actor for SerdeActor<T> where T: Serialize + Deserialize + Send + Clone + 'static {
+    fn receive(&mut self, message: MessageImpl<T>) {
+
+        match message {
+            Message::Serialize {
+                object,
+                responder,
+            } => {
+                let serialized = serde_json::to_string(object).unwrap();
+                let _ = responder.send(ResponseMessage::Response(serialized));
+            }
+            Message::Deserialize {
+                message,
+                path,
+                responder,
+            } => {
+                let deserialized: T = serde_json::from_str(&message).unwrap();
+                self.content = deserialized;
+                let _ = responder.send(ResponseMessageImpl<T>::ResponseDeserialized("Ok".to_string(), deserialized));
+            }
+            _ => {
+                // do nothing
+            }
+        }
+        // do nothing
+    }
+}
+
+
