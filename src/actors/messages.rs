@@ -6,29 +6,15 @@ use serde::{Deserialize, Serialize};
 /// A type that is not used for anything.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct NotUsed;
-pub struct GuardianType;
-pub struct AnyActor;
-pub struct BlockingActor;
-pub struct Mediator;
-pub struct Response;
 
-
-pub struct Message<T, R> {
-    pub for_actor: T,
-    pub payload: R,
+#[derive(Debug)]
+pub struct Message<R> {
+    pub payload: Option<R>,
+    pub stop : bool,
+    pub responder: Option<tokio::sync::oneshot::Sender<ResponseMessage>>,
+    pub blocking: Option<std::sync::mpsc::Sender<ResponseMessage>>,
 }
 
-pub enum GuardianMessage {
-    
-
-}
-
-pub enum ActorType {
-    Mediator(Mediator),
-    Officer(AnyActor),
-    Blocking(BlockingActor),
-    Response(Response),
-}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum ResponseMessage {

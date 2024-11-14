@@ -1,34 +1,21 @@
-use super::{actor_ref::ActorRef, guardian::Guardian, messages::{ActorType, Message, NotUsed}};
-use super::community::generic::Dummy;
+use super::messages::Message;
 use log::info;
 use tokio::sync::mpsc;
 
 
-pub (super) fn create_dummy_actor() -> ActorRef<NotUsed> {
-    let (tx, rx) = mpsc::channel(1);
-    let actor = ActorImpl::new(None, Dummy, rx);
-    ActorRef::new(actor, tx)
-}
-
-
 /// The main actor trait that all actors must implement.
 #[trait_variant::make(Send)]
-pub trait Actor<R>{
-    fn receive(&mut self, message: Message<ActorType, R>) where Self: Sized;
+pub trait Actor<MType>{
+    fn receive(&mut self, message: Message<MType>) where Self: Sized + 'static;
 }
 
-/// Helper function for running the guardian actor.
-/// 
-/// This starts the overall system.
-pub (super) async fn run_guardian(mut actor: Guardian) {
-    while let Some(message) = actor.receiver.recv().await {
-        actor.receive(message).await;
-    }
-}
 
 /// Helper function for running an actor.
-pub (super) async fn run_an_actor<R, T: Actor<R> + 'static>(mut actor : ActorImpl <T, R>) {
+pub (super) async fn run_an_actor<MType, T: Actor<MType> + 'static>(mut actor : ActorImpl <T, MType>) {
     while let Some(message) = actor.receiver.recv().await {
+        if message.stop {
+            break;
+        }
         info!("Running an actor");
         actor.receive(message);
     }
@@ -36,45 +23,48 @@ pub (super) async fn run_an_actor<R, T: Actor<R> + 'static>(mut actor : ActorImp
 }
 
 /// Helper function for running a blocking actor.
-pub (super) fn run_a_blocking_actor<R, T: Actor<R>>(mut actor: BlockingActorImpl<T, R>) {
+pub (super) fn run_a_blocking_actor<MType, T: Actor<MType> + 'static>(mut actor: BlockingActorImpl<T, MType>) {
     while let Ok(message) = actor.receiver.recv() {
+        if message.stop {
+            break;
+        }
         actor.receive(message);
     }
 }
 
 
 /// Implements an actor with an Actor type T, and a Payload type R (can be the NotUsed type if no payload is received).
-pub (super) struct ActorImpl<T, R> {
+pub (super) struct ActorImpl<T, MType> {
     name: Option<String>,
     actor: T,
-    receiver: mpsc::Receiver<Message<ActorType, R>>,
+    receiver: mpsc::Receiver<Message<MType>>,
 }
 
-impl <R, T: Actor<R>> ActorImpl <T, R> {
-    pub (super) fn receive(&mut self, message: Message<ActorType, R>){
+impl <MType, T: Actor<MType> + 'static> ActorImpl <T, MType> {
+    pub (super) fn receive(&mut self, message: Message<MType>){
         info!("Actor {} received message", self.name.clone().unwrap_or("Unnamed Actor".to_string()));
         T::receive(&mut self.actor, message);
     }
-    pub (super) fn new (name: Option<String>, actor: T, receiver: mpsc::Receiver::<Message<ActorType, R>>) -> Self {
+    pub (super) fn new (name: Option<String>, actor: T, receiver: mpsc::Receiver::<Message<MType>>) -> Self {
 
         ActorImpl {name, actor, receiver }
     }
 }
 
-pub (super) struct BlockingActorImpl<T, R> {
+pub (super) struct BlockingActorImpl<T, MType> {
     name: Option<String>,
     actor: T,
-    receiver: std::sync::mpsc::Receiver<Message<ActorType, R>>,
+    receiver: std::sync::mpsc::Receiver<Message<MType>>,
 }
 
-impl <R, T: Actor<R>> BlockingActorImpl<T, R> {
+impl <MType, T: Actor<MType> + 'static> BlockingActorImpl<T, MType> {
 
-     pub (super) fn receive(&mut self, message: Message<ActorType, R>){ 
+     pub (super) fn receive(&mut self, message: Message<MType>){ 
         info!("Blocking actor {} received message", self.name.clone().unwrap_or("Unnamed Blocking Actor".to_string()));
         T::receive(&mut self.actor, message);
     }
 
-    pub (super) fn new (name: Option<String>, actor: T, receiver: std::sync::mpsc::Receiver<Message<ActorType, R>>) -> BlockingActorImpl<T, R> {
+    pub (super) fn new (name: Option<String>, actor: T, receiver: std::sync::mpsc::Receiver<Message<MType>>) -> BlockingActorImpl<T, MType> {
         BlockingActorImpl { name, actor, receiver}
     }
 }
