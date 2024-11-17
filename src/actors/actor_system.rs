@@ -21,7 +21,7 @@ impl<MType: Send> Actor<MType> for Guardian {
         }
         match message.responder {
             Some(responder) => {
-                let _ = responder
+                responder
                     .send(ResponseMessage::Success)
                     .expect("Failed to send response");
             }
@@ -130,8 +130,8 @@ impl<MType: Send + 'static> ActorSystem<MType> {
         let blocking_actors = HashMap::new();
         actors.insert(0, actor_ref);
         ActorSystem {
-            actors: actors,
-            blocking_actors: blocking_actors,
+            actors,
+            blocking_actors,
             snd: tx,
         }
     }
