@@ -3,6 +3,11 @@ name = "sids"
 version = "0.2.0"
 edition = "2021"
 authors = ["Ryan Deschamps <rdeschamps@conestogac.on.ca"]
+repository = "https://github.com/professor-greebie/sids"
+description = "Sids is a sample actor-model scheme providing abstraction over actor types and messages that can be sent across threads."
+keywords = ["actor-model", "concurrent programming"]
+categories = ["asynchronous", "concurrency", "rust-patterns", "data-structures", "virtualization" ]
+exclude = ["/architecture", "/target"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -20,9 +25,5 @@ mockall = "0.13.0"
 [features]
 streams = []
 etl = []
-
-[examples]
-[[example]]
-name = "loggers"
 
 
