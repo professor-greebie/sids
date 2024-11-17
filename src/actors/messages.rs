@@ -1,12 +1,3 @@
-
-use serde::{Deserialize, Serialize};
-
-
-
-/// A type that is not used for anything.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct NotUsed;
-
 #[derive(Debug)]
 pub struct Message<R> {
     pub payload: Option<R>,
@@ -16,7 +7,7 @@ pub struct Message<R> {
 }
 
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
 pub enum ResponseMessage {
     Success, 
     Failure {
