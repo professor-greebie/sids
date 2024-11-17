@@ -8,9 +8,10 @@ description = "Sids is a sample actor-model scheme providing abstraction over ac
 keywords = ["actor-model", "concurrent programming"]
 categories = ["asynchronous", "concurrency", "rust-patterns", "data-structures", "virtualization" ]
 exclude = ["/architecture", "/target"]
+license = "Apache-2.0"
+license-file = "LICENSE.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 tokio = { version = "1", features = ["full"]}
 trait-variant = "0.1.2"
