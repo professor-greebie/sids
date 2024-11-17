@@ -6,21 +6,24 @@ use log::info;
 
 
 #[derive(Debug)]
-pub (super) struct ActorRef<R> 
-where R: Send + 'static {
-    sender: tokio::sync::mpsc::Sender<Message<R>>,
+pub struct ActorRef<MType> 
+where MType: Send + 'static {
+    sender: tokio::sync::mpsc::Sender<Message<MType>>,
 }
 
-impl <R: Send> ActorRef <R> {
-    pub (super) fn new<T: Actor<R> + 'static>(actor : ActorImpl<T, R>, sender: tokio::sync::mpsc::Sender<Message<R>>) -> Self {
+impl <MType: Send> ActorRef <MType> {
+    pub fn new<T: Actor<MType> + 'static>(actor : ActorImpl<T, MType>, sender: tokio::sync::mpsc::Sender<Message<MType>>) -> Self {
         info!(actor = "Log Actor"; "An actor is being spawned");
-        tokio::spawn(run_an_actor::<R, T>(actor));
+        tokio::spawn(run_an_actor::<MType, T>(actor));
         ActorRef { sender }
     }
 
-    pub (super) async fn send(&self, message: Message<R>) {
-        
+    pub async fn send(&self, message: Message<MType>) {
         let _ = self.sender.send(message).await;
+    }
+
+    pub fn sender(&self) -> tokio::sync::mpsc::Sender<Message<MType>> {
+        self.sender.clone()
     }
 }
 
@@ -33,9 +36,9 @@ where R : Send + 'static {
 impl <R: Send> BlockingActorRef <R> {
     pub (super) fn new<T: Actor<R> + std::marker::Send +  'static>(actor : BlockingActorImpl<T, R>, sender: std::sync::mpsc::Sender<Message<R>>) -> Self {
         info!(actor = "Blocking Actor"; "Spawning a Blocking Actor");
-        std::thread::spawn(move | | {
+        std::thread::spawn(move  | | async {
             //
-            run_a_blocking_actor(actor);
+            run_a_blocking_actor(actor).await;
         });
         BlockingActorRef {
             sender
@@ -66,12 +69,12 @@ mod tests {
         
     impl Actor<Payload> for SampleActor {
         
-        fn receive(&mut self, message: Message<Payload>) {
+        async fn receive(&mut self, message: Message<Payload>) {
             // do nothing
             info!("Received message {:?}", message.payload.unwrap().message);
             match message.responder {
                 Some(responder) => {
-                    let _ = responder.send(ResponseMessage::SUCCESS).expect("Failed to send response");
+                    let _ = responder.send(ResponseMessage::Success).expect("Failed to send response");
                 }
                 None => {
                     info!("No responder found");
@@ -83,11 +86,11 @@ mod tests {
     struct SampleBlockingActor; 
 
     impl Actor<BlockingPayload> for SampleBlockingActor {
-        fn receive(&mut self, message: Message<BlockingPayload>) {
+        async fn receive(&mut self, message: Message<BlockingPayload>) {
             info!("Received message {:?}", message.payload.unwrap().message);
-            match message.responder {
-                Some(responder) => {
-                    let _ = responder.send(ResponseMessage::SUCCESS).expect("Failed to send response");
+            match message.blocking {
+                Some(blocking) => {
+                    let _ = blocking.send(ResponseMessage::Success).expect("Failed to send response");
                 }
                 None => {
                     info!("No responder found");
@@ -108,11 +111,11 @@ mod tests {
         let message = Message {payload: Some(payload), stop: false, responder: Some(rs_tx), blocking: None};
         let _ = _actor_ref.send(message).await;
         let response = rs_rx.await.expect("Failed to receive response");
-        assert!(response == ResponseMessage::SUCCESS);
+        assert!(response == ResponseMessage::Success);
     }
 
-    #[test]
-    fn test_blocking_actor_ref() {
+    #[tokio::test]
+    async fn test_blocking_actor_ref() {
         let sample = SampleBlockingActor;
         let (_tx, rx) = std::sync::mpsc::channel::<Message<BlockingPayload>>();
         let (rs_tx, rs_rx) = std::sync::mpsc::channel::<ResponseMessage>();
@@ -123,6 +126,6 @@ mod tests {
         let message = Message {payload: Some(payload), stop: false, responder: None, blocking: Some(rs_tx) };
         let _ = actor_ref.send(message);
         let response = rs_rx.recv().expect("Failed to receive response");
-        assert!(response == ResponseMessage::SUCCESS);
+        assert!(response == ResponseMessage::Success);
     }
 }

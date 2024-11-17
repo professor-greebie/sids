@@ -10,7 +10,7 @@ Run the example logging demonstration.
 ```
 git clone https://github.com/professor-greebie/sids
 cd sids
-cargo run --example logger
+cargo run --example loggers
 ```
 
 ## What this does
@@ -19,54 +19,87 @@ This project demonstrates a simple approach to building actors in Rust, allowing
 
 This is still a project in development, but it does illustrate how you might develop an actor system from scratch in Rust.
 
-Basic Concepts:
+### Basic Concepts:
 
-An actor - an actor implements an ActorTrait to include an async `receive` function.
+An actor - an actor implements an Actor<MType> Trait to include a `receive` function that accepts a message type of `Message<MType>`.
 
-To use the actor, you need to start an actor system. That's pretty straight-forward
-using the sids::actors api.
+The `Message` struct covers the most common Actor behaviors (stop, responses etc.), but you can add more as part of the payload, which is of type MType.
+
+MType can be any base type (`String`, `u32` etc.) or an enum provided that it has Send features and can have static lifetime. Enums are powerful in Rust, so they are highly recommended. See the [Rust documentation on enum types for more information](https://doc.rust-lang.org/book/ch06-00-enums.html)
+
+Once you choose an MType, then the `ActorSystem` will use the same message type throughout the system.  Currently, only one MType is allowed, however, with Rust's enums, there is a lot of capacity for variance on the types of messages that can be sent.
 
 ```rust 
-let mut actor_system = sids::actors::api::start_actor_system();
+let mut actor_system = sids::actors::start_actor_system::<MType>();
 ```
 
-Starting an actor system initializes the system and runs a 'boss' actor called the `Guardian`.
+Starting an actor system initializes the system and runs a 'boss' actor called the `Guardian` with an id of 0. You can ping the boss using `sids::actors::ping_actor_system(&actor_system);`
 
-You can add an actor to the system, by creating an officer. In order to do this, you need to create a structure that implements the ActorTrait trait. For now, the receive function only accepts InternalMessage, which is an enum with a few preset messages. Some messages in InternalMessage include a responder that allows the actor
-to notify a higher level actor (usually the guardian) about the result, often a success or failure.
+You can add an actor to the system, by creating a structure that implements the Actor<MType> trait. All actors in the system must receive a Message<MType>.
 
 ```rust
 
 use sids::actors::actor::Actor;
+use sids::actors::messages::Message;
+use log::info;
 
+enum MyMessage {
+    HELLO, GOODBYE, GHOST
+}
 
 // you can include some attributes like a name if you wish
 struct MyActor;
-impl Actor for MyActor where MyActor: 'static {
+impl Actor<MyMessage> for MyActor  {
     // in future this may not need to be async
-    async fn receive(&mut self, message: Message) {
-        // The `Message` enum carries all possible messages in the system.
-        // Customization may be available in the future, but for now, it is also possible
-        // to use the StringMessage variant to provide custom messages.
-        match message {
-            Message::StringMessage { string } => 
-                // custom options here
-                // as in "if string == 'hello' => println("hello there friend");"
-                info!("Received message {}", string),
-            Message::RequestStatus { responder } {
-                responder.send(ResponseMessage::Ok)
-            }
-        },
+    async fn receive(&mut self, message: Message<MyMessage>) {
+        if let Message { 
+                // optional payload contains MyMessage
+                payload, 
+                // boolean that tells Actor whether it should stop after message.
+                stop, 
+                // optional tokio oneshot channel to send a response back to sender.
+                // This response with a ResponseMessage that includes SUCCESS and FAILURE messages.
+                responder, 
+                // optional blocking channel to send a response back to sender if the Actor is intended to be blocking.
+                blocking 
+                } = message {
+                    if let Some(msg) = payload {
+                        info!("Message received {:?}", payload);
+                    }
+                    if let Some(respond) = responder {
+                        respond.send(ResponseMessage::SUCCESS);
+                    }
+                }
     }
-}
+},
 
-let my_actor = MyActor;
+#[tokio::main]
+async fn main() -> Result(()) {
+    let my_actor = MyActor;
 
-sids::actors::api::spawn_officer(
-    &mut actor_system, // the system you are adding your actor to
-    Some("My actor name"), // an optional name for easy reference
-    my_actor // your implementated actor
-).await
+
+    let mut actor_system = sids::actors::start_actor_system::<MyMessage>().await;
+// gets a oneshot channel to receive a response from the system.
+    let (tx, rx) = sids::actors::get_response_channel(&actor_system);
+    let message = Message {
+        payload: Some(MyMessage::HELLO),
+        stop: false,
+        responder: tx,
+        blocking: None 
+    }
+    spawn_actor(&mut actor_system, my_actor, Some("My Actor".to_string())).await;
+    // guardian is 0, so our actor id will be #1.
+    send_message_by_id(&mut actor_system, 1, message).await;
+    if let Ok(response) = rx.await {
+        info!("Response received from actor {:?}", response);
+    }
+
+} 
+
+
+
+
+
 ```
 
 Officers will be kept in a vector in the GuardianActor, so its id will be as per the index.
@@ -90,13 +123,9 @@ indices will need to account for that (for now).
 
 ## The Future
 
-This project is still in development, so any of these ideas could be added or dropped at any time.
+From a prototype perspective, this is final version of this project, except for performance and safety tweaks.
 
-- Courriers - these are actors that hold state that can be updated by Officer actors (that will also act as an Observer).
-- Custom messaging - currently, actors only accept "InternalMessage" which is limiting if one wants to create their own messaging system. Among the challenges producing custom message is that responders cannot be 
-cloned.
-- A collection of Actors for doing typical ETL things like Kafka consumer and producers, database, conversion, 
-serde etc.
+We will also include some more advanced examples, including using the Actor System to do Actor-Critic Machine Learning work.
 
 ## Citations
 

@@ -1,6 +1,6 @@
 [package]
 name = "sids"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Ryan Deschamps <rdeschamps@conestogac.on.ca"]
 
@@ -23,10 +23,6 @@ etl = []
 
 [examples]
 [[example]]
-name = "source"
-required-features = ["streams"]
-[[example]]
-name = "collection"
-required-features = ["etl"]
+name = "loggers"
 
 

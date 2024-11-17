@@ -18,8 +18,19 @@ pub struct Message<R> {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum ResponseMessage {
-    SUCCESS, 
-    FAILURE,
+    Success, 
+    Failure {
+        message: Option<String>,
+    },
+    Status {
+        message: Option<u32>,
+    },
+    Response {
+        message: String,
+    },
+    InProgress,
+    Complete,
+    NotFound,
 
 }
 

@@ -13,8 +13,8 @@ use tokio::sync::{mpsc, oneshot};
 
 struct Guardian;
 
-impl<MType> Actor<MType> for Guardian {
-    fn receive(&mut self, message: Message<MType>) {
+impl<MType: Send> Actor<MType> for Guardian {
+    async fn receive(&mut self, message: Message<MType>) {
         info!("Guardian received a message");
         if message.stop {
             info!("Guardian received a stop message");
@@ -22,7 +22,7 @@ impl<MType> Actor<MType> for Guardian {
         match message.responder {
             Some(responder) => {
                 let _ = responder
-                    .send(ResponseMessage::SUCCESS)
+                    .send(ResponseMessage::Success)
                     .expect("Failed to send response");
             }
             None => {
@@ -32,6 +32,7 @@ impl<MType> Actor<MType> for Guardian {
     }
 }
 
+
 /// The ActorSystem is the main entry point for the actor system. It is responsible for creating the guardian actor and sending messages to the guardian actor.
 ///
 /// The ActorSystem is designed to be an actor reference for the guardian actor that manages all other actors in the system.
@@ -39,12 +40,33 @@ impl<MType> Actor<MType> for Guardian {
 ///
 /// # Example
 /// ```rust
-/// use sids::actors::actor_system::ActorSystem;
+/// use sids::actors;
 /// use sids::actors::messages::{Message, ResponseMessage};
+/// use sids::actors::actor::Actor;
+/// use log::info;
+///
+/// /// Sample actor type to receive message.
+///
+/// struct SampleActor;
+/// impl Actor<String> for SampleActor {
+///    fn receive(&mut self, message: Message<String>) {
+///       info!("SampleActor received message: {:?}", message.payload);
+///       message.responder.unwrap().send(ResponseMessage::SUCCESS).expect("Failed to send response");
+///    }
+///
+/// }
 ///
 /// pub async fn run_system() {
-///
-///     let (tx, _rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
+///    let actor = SampleActor;
+///    
+///    // Creates a new actor system that uses String as the message type.
+///    let mut actor_system = actors::start_actor_system::<String>();
+///    let (tx, rx) = actors::get_response_channel(&mut actor_system);
+///    let message = Message { payload: Some("My String Message".to_string()), stop: false, responder: Some(tx), blocking: None };
+///    actors::spawn_actor::<String, SampleActor>(&mut actor_system, actor, Some("Sample Actor".to_string())).await;
+///    actors::send_message_by_id(&mut actor_system, 1, message).await;
+///    let response = rx.await.expect("Failed to receive response");
+///    assert_eq!(response, ResponseMessage::SUCCESS);
 /// }
 ///
 /// ```
@@ -126,7 +148,7 @@ impl<MType: Send + 'static> ActorSystem<MType> {
         self.actors.insert(actor_id, actor_ref);
     }
 
-    pub (super) fn spawn_blocking_actor<T>(&mut self, actor: T, name: Option<String>)
+    pub(super) fn spawn_blocking_actor<T>(&mut self, actor: T, name: Option<String>)
     where
         T: Actor<MType> + 'static,
     {
@@ -139,21 +161,47 @@ impl<MType: Send + 'static> ActorSystem<MType> {
     }
 
     pub(super) async fn send_message_to_actor(&mut self, actor_id: u32, message: Message<MType>) {
-        if let Message { payload: _, stop: _, responder: None, blocking: Some(_) } = &message {
-            let blocking_actor = self.blocking_actors.get_mut(&actor_id).expect("Failed to get blocking actor");
-                blocking_actor.send(message);
-        } else if let Message { payload: _, stop: _, responder: _, blocking: None } = &message {
+        if let Message {
+            payload: _,
+            stop: _,
+            responder: None,
+            blocking: Some(_),
+        } = &message
+        {
+            let blocking_actor = self
+                .blocking_actors
+                .get_mut(&actor_id)
+                .expect("Failed to get blocking actor");
+            blocking_actor.send(message);
+        } else if let Message {
+            payload: _,
+            stop: _,
+            responder: _,
+            blocking: None,
+        } = &message
+        {
             let actor = self.actors.get_mut(&actor_id).expect("Failed to get actor");
             actor.send(message).await;
         } else {
             warn!("No actor found with id: {}", actor_id);
         }
-        
     }
 
     pub(super) async fn ping_system(&self) {
         info!("Pinging system");
-        self.snd.send(Message{payload: None, stop: false, responder: None, blocking: None}).await.expect("Failed to send message");
+        self.snd
+            .send(Message {
+                payload: None,
+                stop: false,
+                responder: None,
+                blocking: None,
+            })
+            .await
+            .expect("Failed to send message");
+    }
+
+    pub (super) fn get_actor_sender(&self, id: u32) -> mpsc::Sender<Message<MType>> {
+        self.actors.get(&id).expect("Failed to get actor").sender()
     }
 }
 
@@ -163,8 +211,7 @@ impl<MType: Send + 'static> ActorSystem<MType> {
 mod tests {
 
     #[tokio::test]
-    async fn test_actor_system_started() {
-    }
+    async fn test_actor_system_started() {}
 }
 
 // grcov-excl-stop

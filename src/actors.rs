@@ -3,7 +3,6 @@ pub mod actor_system;
 pub mod actor;
 pub mod actor_ref;
 pub mod channel_factory;
-pub mod community;
 pub mod messages;
 
 use actor::Actor;
@@ -40,4 +39,8 @@ pub fn get_response_channel<MType: Send + 'static>(actor_system: &ActorSystem<MT
 
 pub fn get_blocking_response_channel<MType: Send + 'static>(actor_system: &ActorSystem<MType>) -> (std::sync::mpsc::Sender<ResponseMessage>, std::sync::mpsc::Receiver<ResponseMessage>) {
     actor_system.create_blocking_response_channel()
+}
+
+pub fn get_actor_sender<MType: Send + 'static>(actor_system: &ActorSystem<MType>, id: u32) -> tokio::sync::mpsc::Sender<Message<MType>> {
+    actor_system.get_actor_sender(id)
 }

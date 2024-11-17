@@ -36,7 +36,7 @@ impl Actor<GenericMessage> for SampleActor
 where
     SampleActor: 'static,
 {
-    fn receive(&mut self, message: Message<GenericMessage>) {
+    async fn receive(&mut self, message: Message<GenericMessage>) {
         let name = self.name.clone();
         // Log the message received by the actor.
         info!("Actor {} received message: {:?} on thread #: {:?}", name, message.payload, thread::current().id());
@@ -49,13 +49,13 @@ impl Actor<GenericMessage> for SampleBlockingActor
 where
     SampleBlockingActor: 'static,
 {
-    fn receive(&mut self, message: Message<GenericMessage>) {
+    async fn receive(&mut self, message: Message<GenericMessage>) {
         // do nothing
         info!("Received message in blocking actor via Actor trait");
         info!("Received message in blocking actor: {:?} on thread #: {:?} ", message, thread::current().id());
         if let Message {payload: _, stop: false, responder: _, blocking: Some(block)} =  &message {
 
-            block.send(ResponseMessage::SUCCESS).unwrap();
+            block.send(ResponseMessage::Success).unwrap();
             
         }
     
