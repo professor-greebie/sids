@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::atomic::AtomicUsize};
 
 use crate::actors::actor::{ActorImpl, BlockingActorImpl};
 
@@ -73,6 +73,8 @@ impl<MType: Send> Actor<MType> for Guardian {
 pub struct ActorSystem<MType: Send + 'static> {
     actors: HashMap<u32, ActorRef<MType>>,
     blocking_actors: HashMap<u32, BlockingActorRef<MType>>,
+    total_messages: &'static AtomicUsize,
+    total_threads: &'static AtomicUsize,
     snd: mpsc::Sender<Message<MType>>,
 }
 
@@ -125,13 +127,17 @@ impl<MType: Send + 'static> ActorSystem<MType> {
         info!(actor = "guardian"; "Guardian actor spawned");
         info!(actor = "guardian"; "Actor system created");
         let guardian = ActorImpl::new(Some("Guardian Type".to_string()), Guardian, rx);
-        let actor_ref = ActorRef::new(guardian, tx.clone());
+        static MESSAGE_MONITOR: AtomicUsize = AtomicUsize::new(0);
+        static THREAD_MONITOR: AtomicUsize = AtomicUsize::new(0);
+        let actor_ref = ActorRef::new(guardian, tx.clone(), &THREAD_MONITOR, &MESSAGE_MONITOR);
         let mut actors = HashMap::new();
         let blocking_actors = HashMap::new();
         actors.insert(0, actor_ref);
         ActorSystem {
             actors,
             blocking_actors,
+            total_messages: &MESSAGE_MONITOR,
+            total_threads: &THREAD_MONITOR,
             snd: tx,
         }
     }
@@ -143,7 +149,7 @@ impl<MType: Send + 'static> ActorSystem<MType> {
         info!("Spawning actor");
         let (snd, rec) = self.create_actor_channel();
         let actor_impl = ActorImpl::new(name, actor, rec);
-        let actor_ref = ActorRef::new(actor_impl, snd);
+        let actor_ref = ActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
         let actor_id = self.actors.len() as u32;
         self.actors.insert(actor_id, actor_ref);
     }
@@ -202,6 +208,22 @@ impl<MType: Send + 'static> ActorSystem<MType> {
 
     pub (super) fn get_actor_sender(&self, id: u32) -> mpsc::Sender<Message<MType>> {
         self.actors.get(&id).expect("Failed to get actor").sender()
+    }
+
+    pub fn get_thread_count_reference(&self) -> &'static AtomicUsize {
+        self.total_messages
+    }
+
+    pub fn get_message_count_reference(&self) -> &'static AtomicUsize {
+        self.total_threads
+    }
+
+    pub fn get_thread_count(&self) -> usize {
+        self.total_threads.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn get_message_count(&self) -> usize {
+        self.total_messages.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 

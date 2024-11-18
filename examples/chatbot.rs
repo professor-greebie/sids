@@ -29,10 +29,10 @@ impl Alice {
         Alice { partners: HashMap::new() }
     }
     // Actor needs to be status to ensure that the actor is not moved before the message is sent.
-    fn add_partner<T: Actor<ChatMessage> + 'static>(&mut self, partner: T, name: String) {
+    fn add_partner<T: Actor<ChatMessage> + 'static>(&mut self, partner: T, name: String, thread_ref: &'static std::sync::atomic::AtomicUsize, message_ref: &'static std::sync::atomic::AtomicUsize) {
         let (sender, receiver) = tokio::sync::mpsc::channel::<Message<ChatMessage>>(100);
         let actor = ActorImpl::<T, ChatMessage>::new(Some(name.clone()), partner, receiver);
-        let reference = ActorRef::new(actor, sender);
+        let reference = ActorRef::new(actor, sender, thread_ref, message_ref);
         self.partners.insert(name, reference);
     }
 
@@ -95,9 +95,11 @@ impl Actor<ChatMessage> for Bob {
 
 async fn start_sample_actor_system() {
     let mut actor_system = start_actor_system::<ChatMessage>();
+    let thread_ref = actor_system.get_thread_count_reference();
+    let message_ref = actor_system.get_message_count_reference();
     let bob = Bob::new();
     let mut alice = Alice::new();
-    alice.add_partner(bob, "Bob".to_string());
+    alice.add_partner(bob, "Bob".to_string(), thread_ref, message_ref);
     let (tx, rx) = get_response_channel(&mut actor_system);
     spawn_actor(&mut actor_system, alice, Some("Alice".to_string())).await;
     let hello = Message {
@@ -123,6 +125,8 @@ async fn start_sample_actor_system() {
     send_message_by_id(&mut actor_system, 1, string_message).await;
     let response = rx.await.expect("Failed to receive response");
     info!("We received a response: {:?} from Alice", response);
+    info!("Total messages sent: {}", actor_system.get_message_count());
+    info!("Total threads: {}", actor_system.get_thread_count());
 
 
 }

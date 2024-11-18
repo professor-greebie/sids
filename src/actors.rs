@@ -44,3 +44,21 @@ pub fn get_blocking_response_channel<MType: Send + 'static>(actor_system: &Actor
 pub fn get_actor_sender<MType: Send + 'static>(actor_system: &ActorSystem<MType>, id: u32) -> tokio::sync::mpsc::Sender<Message<MType>> {
     actor_system.get_actor_sender(id)
 }
+
+pub fn get_message_count_reference<MType: Send + 'static>(actor_system: &ActorSystem<MType>) -> &'static std::sync::atomic::AtomicUsize {
+    actor_system.get_message_count_reference()
+}
+
+pub fn get_thread_count_reference<MType: Send + 'static>(actor_system: &ActorSystem<MType>) -> &'static std::sync::atomic::AtomicUsize {
+    actor_system.get_thread_count_reference()
+}
+
+
+pub fn get_total_messages<MType: Send + 'static>(actor_system: &ActorSystem<MType>) -> usize {
+    actor_system.get_thread_count()
+}
+
+pub fn get_total_threads<MType: Send + 'static>(actor_system: &ActorSystem<MType>) -> usize {
+    actor_system.get_message_count()
+}
+
