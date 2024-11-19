@@ -13,7 +13,7 @@ use tokio::sync::{mpsc, oneshot};
 
 struct Guardian;
 
-impl<MType: Send> Actor<MType> for Guardian {
+impl<MType: Send + Clone> Actor<MType> for Guardian {
     async fn receive(&mut self, message: Message<MType>) {
         info!("Guardian received a message");
         if message.stop {
@@ -70,7 +70,7 @@ impl<MType: Send> Actor<MType> for Guardian {
 /// }
 ///
 /// ```
-pub struct ActorSystem<MType: Send + 'static> {
+pub struct ActorSystem<MType: Send + Clone + 'static> {
     actors: HashMap<u32, ActorRef<MType>>,
     blocking_actors: HashMap<u32, BlockingActorRef<MType>>,
     total_messages: &'static AtomicUsize,
@@ -78,7 +78,7 @@ pub struct ActorSystem<MType: Send + 'static> {
     snd: mpsc::Sender<Message<MType>>,
 }
 
-impl<MType: Send + 'static> ChannelFactory<MType> for ActorSystem<MType> {
+impl<MType: Send + Clone + 'static> ChannelFactory<MType> for ActorSystem<MType> {
     fn create_actor_channel(
         &self,
     ) -> (
@@ -116,7 +116,7 @@ impl<MType: Send + 'static> ChannelFactory<MType> for ActorSystem<MType> {
     }
 }
 
-impl<MType: Send + 'static> ActorSystem<MType> {
+impl<MType: Send + Clone + 'static> ActorSystem<MType> {
     /// Create a new ActorSystem
     ///
     /// The ActorSystem will start by launching a guardian, which is a non-blocking officer-actor that manages all other actors in the system.
@@ -206,8 +206,8 @@ impl<MType: Send + 'static> ActorSystem<MType> {
             .expect("Failed to send message");
     }
 
-    pub (super) fn get_actor_sender(&self, id: u32) -> mpsc::Sender<Message<MType>> {
-        self.actors.get(&id).expect("Failed to get actor").sender()
+    pub (super) fn get_actor_ref(&self, id: u32) -> ActorRef<MType> {
+        self.actors.get(&id).expect("Failed to get actor").clone()
     }
 
     pub fn get_thread_count_reference(&self) -> &'static AtomicUsize {

@@ -15,6 +15,8 @@ fn get_loggings() {
 
 // Sample MType for the chat system. 
 // Once a message is selected, all actors in the system must use the same message type.
+
+#[derive(Debug, Clone)]
 enum ChatMessage {
     Hello { name: String },
     Goodbye,

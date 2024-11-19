@@ -15,7 +15,7 @@ fn get_loggings() {
 }
 
 // Sample actor type that will be used to send messages to each other.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 
 enum GenericMessage {
     Hello, 
