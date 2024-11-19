@@ -7,7 +7,7 @@ use log::info;
 
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActorRef<MType> 
 where MType: Send + 'static {
     send_monitor: &'static AtomicUsize,
@@ -31,9 +31,6 @@ impl <MType: Send> ActorRef <MType> {
         self.send_monitor.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
-    pub fn sender(&self) -> tokio::sync::mpsc::Sender<Message<MType>> {
-        self.sender.clone()
-    }
 }
 
 #[derive(Debug)]
