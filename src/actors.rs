@@ -17,8 +17,7 @@ pub fn start_actor_system<MType: Send + Clone + 'static>() -> ActorSystem<MType>
     ActorSystem::<MType>::new()
 }
 
-pub async fn spawn_actor<MType: Send + Clone + 'static, T>(actor_system: &mut ActorSystem<MType>, actor: T, name: Option<String>) where T: Actor<MType> + 'static {
-    
+pub async fn spawn_actor<MType: Send + Clone + 'static, T>(actor_system: &mut ActorSystem<MType>, actor: T, name: Option<String>) where T: Actor<MType> + 'static {  
     actor_system.spawn_actor(actor, name).await;
 }
 
@@ -53,7 +52,6 @@ pub fn get_message_count_reference<MType: Send + Clone +'static>(actor_system: &
 pub fn get_thread_count_reference<MType: Send + Clone +'static>(actor_system: &ActorSystem<MType>) -> &'static std::sync::atomic::AtomicUsize {
     actor_system.get_thread_count_reference()
 }
-
 
 pub fn get_total_messages<MType: Send + Clone + 'static>(actor_system: &ActorSystem<MType>) -> usize {
     actor_system.get_thread_count()

@@ -16,7 +16,7 @@ where MType: Send + 'static {
 
 impl <MType: Send> ActorRef <MType> {
     pub fn new<T: Actor<MType> + 'static>(actor : ActorImpl<T, MType>, sender: tokio::sync::mpsc::Sender<Message<MType>>, thread_monitor: &'static AtomicUsize, send_monitor: &'static AtomicUsize) -> Self {
-        info!(actor = "Log Actor"; "An actor is being spawned");
+        info!(actor = "Tokio Actor"; "Spawning a Tokio Actor");
         tokio::spawn(async move {
             thread_monitor.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             run_an_actor::<MType, T>(actor).await;
@@ -26,7 +26,6 @@ impl <MType: Send> ActorRef <MType> {
     }
 
     pub async fn send(&self, message: Message<MType>) {
-
         let _ = self.sender.send(message).await;
         self.send_monitor.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
