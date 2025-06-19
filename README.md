@@ -43,14 +43,16 @@ use sids::actors::actor::Actor;
 use sids::actors::messages::Message;
 use log::info;
 
+#[derive(Debug, Clone)]
+// Messages can be any valid enum that can derive Clone.
 enum MyMessage {
     HELLO, GOODBYE, GHOST
 }
 
 // you can include some attributes like a name if you wish
 struct MyActor;
-impl Actor<MyMessage> for MyActor  {
-    // in future this may not need to be async
+// Actors must have static lifetime
+impl Actor<MyMessage> for MyActor where MyActor: 'static  {
     async fn receive(&mut self, message: Message<MyMessage>) {
         if let Message { 
                 // optional payload contains MyMessage
@@ -79,7 +81,7 @@ async fn main() -> Result(()) {
 
 
     let mut actor_system = sids::actors::start_actor_system::<MyMessage>().await;
-// gets a oneshot channel to receive a response from the system.
+    // gets a oneshot channel to receive a response from the system.
     let (tx, rx) = sids::actors::get_response_channel(&actor_system);
     let message = Message {
         payload: Some(MyMessage::HELLO),
@@ -95,31 +97,6 @@ async fn main() -> Result(()) {
     }
 
 } 
-
-
-
-
-
-```
-
-Officers will be kept in a vector in the GuardianActor, so its id will be as per the index.
-In future there will be a better approach to capturing actors by name or type. To send a message to this 
-actor, you simple do:
-
-```rust
-
-send_message_to_officer_enum(
-    &actor_system, // the actor system
-    0, // the officer id, currently a simple Vec index for now
-    Message::RequestStatus, // the message you wish to send
-    false // whether the actor is a thread-blocking type (see below)
-    );
-
-```
-
-Actors may also be blocking in case you need that for collecting data from an http response or something else 
-that requires thread blocking in order to operate. Blocking actors are kept in their own Vector, so 
-indices will need to account for that (for now).
 
 ## The Future
 

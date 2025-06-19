@@ -125,8 +125,8 @@ impl<MType: Send + Clone + 'static> ActorSystem<MType> {
         let (tx, rx) = mpsc::channel::<Message<MType>>(super::SIDS_DEFAULT_BUFFER_SIZE);
         info!(actor = "guardian"; "Guardian channel and actor created. Launching...");
         info!(actor = "guardian"; "Guardian actor spawned");
-        info!(actor = "guardian"; "Actor system created");
         let guardian = ActorImpl::new(Some("Guardian Type".to_string()), Guardian, rx);
+        info!(actor = "guardian"; "Actor system created");
         static MESSAGE_MONITOR: AtomicUsize = AtomicUsize::new(0);
         static THREAD_MONITOR: AtomicUsize = AtomicUsize::new(0);
         let actor_ref = ActorRef::new(guardian, tx.clone(), &THREAD_MONITOR, &MESSAGE_MONITOR);
@@ -146,7 +146,7 @@ impl<MType: Send + Clone + 'static> ActorSystem<MType> {
     where
         T: Actor<MType> + 'static,
     {
-        info!("Spawning actor");
+        info!("Spawning actor within the actor system.");
         let (snd, rec) = self.create_actor_channel();
         let actor_impl = ActorImpl::new(name, actor, rec);
         let actor_ref = ActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
@@ -158,7 +158,7 @@ impl<MType: Send + Clone + 'static> ActorSystem<MType> {
     where
         T: Actor<MType> + 'static,
     {
-        info!("Spawning blocking actor");
+        info!("Spawning blocking actor within the actor system.");
         let (snd, rec) = self.create_blocking_actor_channel();
         let actor_impl = BlockingActorImpl::new(name, actor, rec);
         let actor_ref = BlockingActorRef::new(actor_impl, snd);
