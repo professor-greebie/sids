@@ -19,6 +19,18 @@ pub enum ResponseMessage {
     Response {
         message: String,
     },
+    SuccessWithData {
+        data: Option<String>,
+    },
+    SuccessWithBytes {
+        data: Option<Vec<u8>>,
+    },
+    FailureWithData {
+        data: Option<String>,
+    },
+    FailureWithBytes {
+        data: Option<Vec<u8>>,
+    },
     InProgress,
     Complete,
     NotFound,
