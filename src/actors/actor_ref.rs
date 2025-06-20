@@ -8,24 +8,25 @@ use log::info;
 
 
 #[derive(Debug, Clone)]
-pub struct ActorRef<MType> 
-where MType: Send + 'static {
+pub struct ActorRef<MType, Response> 
+where MType: Send + 'static, 
+Response: Send + 'static {
     send_monitor: &'static AtomicUsize,
-    sender: tokio::sync::mpsc::Sender<Message<MType>>,
+    sender: tokio::sync::mpsc::Sender<Message<MType, Response>>,
 }
 
-impl <MType: Send> ActorRef <MType> {
-    pub fn new<T: Actor<MType> + 'static>(actor : ActorImpl<T, MType>, sender: tokio::sync::mpsc::Sender<Message<MType>>, thread_monitor: &'static AtomicUsize, send_monitor: &'static AtomicUsize) -> Self {
+impl <MType: Send, Response: Send> ActorRef <MType, Response> {
+    pub fn new<T: Actor<MType, Response> + 'static>(actor : ActorImpl<T, MType, Response>, sender: tokio::sync::mpsc::Sender<Message<MType, Response>>, thread_monitor: &'static AtomicUsize, send_monitor: &'static AtomicUsize) -> Self {
         info!(actor = "Tokio Actor"; "Spawning a Tokio Actor");
         tokio::spawn(async move {
             thread_monitor.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            run_an_actor::<MType, T>(actor).await;
+            run_an_actor::<MType, Response, T>(actor).await;
             
         });
         ActorRef { send_monitor, sender }
     }
 
-    pub async fn send(&self, message: Message<MType>) {
+    pub async fn send(&self, message: Message<MType, Response>) {
         let _ = self.sender.send(message).await;
         self.send_monitor.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
@@ -33,23 +34,22 @@ impl <MType: Send> ActorRef <MType> {
 }
 
 #[derive(Debug)]
-pub struct BlockingActorRef<R> 
-where R : Send + 'static {
-    sender: std::sync::mpsc::Sender<Message<R>>,
+pub struct BlockingActorRef<MType, Response> 
+where MType : Send + 'static, Response: Send + 'static {
+    sender: std::sync::mpsc::Sender<Message<MType, Response>>,
 }
 
-impl <R: Send> BlockingActorRef <R> {
-    pub (super) fn new<T: Actor<R> + std::marker::Send +  'static>(actor : BlockingActorImpl<T, R>, sender: std::sync::mpsc::Sender<Message<R>>) -> Self {
+impl <MType: Send, Response: Send> BlockingActorRef <MType, Response> {
+    pub (super) fn new<T: Actor<MType, Response> + Send + 'static>(actor: BlockingActorImpl<T, MType, Response>, sender: std::sync::mpsc::Sender<Message<MType, Response>>) -> Self {
         info!(actor = "Blocking Actor"; "Spawning a Blocking Actor");
-        std::thread::spawn(move  | | async {
-            //
+        std::thread::spawn(move || async {
             run_a_blocking_actor(actor).await;
         });
         BlockingActorRef {
             sender
         }
     }
-    pub (super) fn send(&self, message: Message<R>) {
+    pub (super) fn send(&self, message: Message<MType, Response>) {
         let _ = self.sender.send(message);
     }
 }
@@ -72,9 +72,9 @@ mod tests {
 
     struct SampleActor;
         
-    impl Actor<Payload> for SampleActor {
+    impl Actor<Payload, ResponseMessage> for SampleActor {
         
-        async fn receive(&mut self, message: Message<Payload>) {
+        async fn receive(&mut self, message: Message<Payload, ResponseMessage>) {
             // do nothing
             info!("Received message {:?}", message.payload.unwrap().message);
             match message.responder {
@@ -90,8 +90,8 @@ mod tests {
 
     struct SampleBlockingActor; 
 
-    impl Actor<BlockingPayload> for SampleBlockingActor {
-        async fn receive(&mut self, message: Message<BlockingPayload>) {
+    impl Actor<BlockingPayload, ResponseMessage> for SampleBlockingActor {
+        async fn receive(&mut self, message: Message<BlockingPayload, ResponseMessage>) {
             info!("Received message {:?}", message.payload.unwrap().message);
             match message.blocking {
                 Some(blocking) => {
@@ -109,7 +109,7 @@ mod tests {
         static THREAD_MONITOR: AtomicUsize = AtomicUsize::new(0);
         static SEND_MONITOR: AtomicUsize = AtomicUsize::new(0);
         let sample = SampleActor;
-        let (_tx, rx) = mpsc::channel::<Message<Payload>>(1);
+        let (_tx, rx) = mpsc::channel::<Message<Payload, ResponseMessage>>(1);
         let (rs_tx, rs_rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
         let actor = ActorImpl::new(None, sample, rx);
         let _actor_ref = ActorRef::new::<SampleActor>(actor, _tx, &THREAD_MONITOR, &SEND_MONITOR);
@@ -126,7 +126,7 @@ mod tests {
         
         
         let sample = SampleBlockingActor;
-        let (_tx, rx) = std::sync::mpsc::channel::<Message<BlockingPayload>>();
+        let (_tx, rx) = std::sync::mpsc::channel::<Message<BlockingPayload, ResponseMessage>>();
         let (rs_tx, rs_rx) = std::sync::mpsc::channel::<ResponseMessage>();
         let actor = BlockingActorImpl::new(None, sample, rx);
         let actor_ref = BlockingActorRef::new( actor, _tx,);

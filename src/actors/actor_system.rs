@@ -13,8 +13,8 @@ use tokio::sync::{mpsc, oneshot};
 
 struct Guardian;
 
-impl<MType: Send + Clone> Actor<MType> for Guardian {
-    async fn receive(&mut self, message: Message<MType>) {
+impl<MType: Send + Clone> Actor<MType, ResponseMessage> for Guardian {
+    async fn receive(&mut self, message: Message<MType, ResponseMessage>) {
         info!("Guardian received a message");
         if message.stop {
             info!("Guardian received a stop message");
@@ -70,59 +70,60 @@ impl<MType: Send + Clone> Actor<MType> for Guardian {
 /// }
 ///
 /// ```
-pub struct ActorSystem<MType: Send + Clone + 'static> {
-    actors: HashMap<u32, ActorRef<MType>>,
-    blocking_actors: HashMap<u32, BlockingActorRef<MType>>,
+pub struct ActorSystem<MType: Send + Clone + 'static, Response: Send + Clone + 'static> {
+    _guardian: ActorRef<MType, ResponseMessage>,
+    actors: HashMap<u32, ActorRef<MType, Response>>,
+    blocking_actors: HashMap<u32, BlockingActorRef<MType, Response>>,
     total_messages: &'static AtomicUsize,
     total_threads: &'static AtomicUsize,
-    snd: mpsc::Sender<Message<MType>>,
+    snd: mpsc::Sender<Message<MType, ResponseMessage>>,
 }
 
-impl<MType: Send + Clone + 'static> ChannelFactory<MType> for ActorSystem<MType> {
+impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFactory<MType, Response> for ActorSystem<MType, Response> {
     fn create_actor_channel(
         &self,
     ) -> (
-        tokio::sync::mpsc::Sender<Message<MType>>,
-        tokio::sync::mpsc::Receiver<Message<MType>>,
+        tokio::sync::mpsc::Sender<Message<MType, Response>>,
+        tokio::sync::mpsc::Receiver<Message<MType, Response>>,
     ) {
-        mpsc::channel::<Message<MType>>(super::SIDS_DEFAULT_BUFFER_SIZE)
+        mpsc::channel::<Message<MType, Response>>(super::SIDS_DEFAULT_BUFFER_SIZE)
     }
 
     fn create_blocking_actor_channel(
         &self,
     ) -> (
-        std::sync::mpsc::Sender<Message<MType>>,
-        std::sync::mpsc::Receiver<Message<MType>>,
+        std::sync::mpsc::Sender<Message<MType, Response>>,
+        std::sync::mpsc::Receiver<Message<MType, Response>>,
     ) {
-        std::sync::mpsc::channel::<Message<MType>>()
+        std::sync::mpsc::channel::<Message<MType, Response>>()
     }
 
     fn create_response_channel(
         &self,
     ) -> (
-        tokio::sync::oneshot::Sender<ResponseMessage>,
-        tokio::sync::oneshot::Receiver<ResponseMessage>,
+        tokio::sync::oneshot::Sender<Response>,
+        tokio::sync::oneshot::Receiver<Response>,
     ) {
-        oneshot::channel::<ResponseMessage>()
+        oneshot::channel::<Response>()
     }
 
     fn create_blocking_response_channel(
         &self,
     ) -> (
-        std::sync::mpsc::Sender<ResponseMessage>,
-        std::sync::mpsc::Receiver<ResponseMessage>,
+        std::sync::mpsc::Sender<Response>,
+        std::sync::mpsc::Receiver<Response>,
     ) {
-        std::sync::mpsc::channel::<ResponseMessage>()
+        std::sync::mpsc::channel::<Response>()
     }
 }
 
-impl<MType: Send + Clone + 'static> ActorSystem<MType> {
+impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSystem<MType, Response> {
     /// Create a new ActorSystem
     ///
     /// The ActorSystem will start by launching a guardian, which is a non-blocking officer-actor that manages all other actors in the system.
     /// The guardian will be dormant until start_system is called in the ActorSystem.
     pub(super) fn new() -> Self {
-        let (tx, rx) = mpsc::channel::<Message<MType>>(super::SIDS_DEFAULT_BUFFER_SIZE);
+        let (tx, rx) = mpsc::channel::<Message<MType, ResponseMessage>>(super::SIDS_DEFAULT_BUFFER_SIZE);
         info!(actor = "guardian"; "Guardian channel and actor created. Launching...");
         info!(actor = "guardian"; "Guardian actor spawned");
         let guardian = ActorImpl::new(Some("Guardian Type".to_string()), Guardian, rx);
@@ -130,10 +131,10 @@ impl<MType: Send + Clone + 'static> ActorSystem<MType> {
         static MESSAGE_MONITOR: AtomicUsize = AtomicUsize::new(0);
         static THREAD_MONITOR: AtomicUsize = AtomicUsize::new(0);
         let actor_ref = ActorRef::new(guardian, tx.clone(), &THREAD_MONITOR, &MESSAGE_MONITOR);
-        let mut actors = HashMap::new();
+        let actors = HashMap::<u32, ActorRef<MType, Response>>::new();
         let blocking_actors = HashMap::new();
-        actors.insert(0, actor_ref);
         ActorSystem {
+            _guardian: actor_ref,
             actors,
             blocking_actors,
             total_messages: &MESSAGE_MONITOR,
@@ -144,7 +145,7 @@ impl<MType: Send + Clone + 'static> ActorSystem<MType> {
 
     pub(super) async fn spawn_actor<T>(&mut self, actor: T, name: Option<String>)
     where
-        T: Actor<MType> + 'static,
+        T: Actor<MType, Response> + 'static,
     {
         info!("Spawning actor within the actor system.");
         let (snd, rec) = self.create_actor_channel();
@@ -156,7 +157,7 @@ impl<MType: Send + Clone + 'static> ActorSystem<MType> {
 
     pub(super) fn spawn_blocking_actor<T>(&mut self, actor: T, name: Option<String>)
     where
-        T: Actor<MType> + 'static,
+        T: Actor<MType, Response> + 'static,
     {
         info!("Spawning blocking actor within the actor system.");
         let (snd, rec) = self.create_blocking_actor_channel();
@@ -166,7 +167,7 @@ impl<MType: Send + Clone + 'static> ActorSystem<MType> {
         self.blocking_actors.insert(actor_id, actor_ref);
     }
 
-    pub(super) async fn send_message_to_actor(&mut self, actor_id: u32, message: Message<MType>) {
+    pub(super) async fn send_message_to_actor(&mut self, actor_id: u32, message: Message<MType, Response>) {
         if let Message {
             payload: _,
             stop: _,
@@ -206,7 +207,7 @@ impl<MType: Send + Clone + 'static> ActorSystem<MType> {
             .expect("Failed to send message");
     }
 
-    pub (super) fn get_actor_ref(&self, id: u32) -> ActorRef<MType> {
+    pub (super) fn get_actor_ref(&self, id: u32) -> ActorRef<MType, Response> {
         self.actors.get(&id).expect("Failed to get actor").clone()
     }
 

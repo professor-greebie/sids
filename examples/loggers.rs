@@ -32,11 +32,11 @@ impl SampleActor {
     }
 }
 
-impl Actor<GenericMessage> for SampleActor
+impl Actor<GenericMessage, ResponseMessage> for SampleActor
 where
     SampleActor: 'static,
 {
-    async fn receive(&mut self, message: Message<GenericMessage>) {
+    async fn receive(&mut self, message: Message<GenericMessage, ResponseMessage>) {
         let name = self.name.clone();
         // Log the message received by the actor.
         info!("Actor {} received message: {:?} on thread #: {:?}", name, message.payload, thread::current().id());
@@ -45,11 +45,11 @@ where
 
 struct SampleBlockingActor;
 
-impl Actor<GenericMessage> for SampleBlockingActor
+impl Actor<GenericMessage, ResponseMessage> for SampleBlockingActor
 where
     SampleBlockingActor: 'static,
 {
-    async fn receive(&mut self, message: Message<GenericMessage>) {
+    async fn receive(&mut self, message: Message<GenericMessage, ResponseMessage>) {
         // do nothing
         info!("Received message in blocking actor via Actor trait");
         info!("Received message in blocking actor: {:?} on thread #: {:?} ", message, thread::current().id());
@@ -67,7 +67,7 @@ where
 async fn start_sample_actor_system() {
     
     // Start an actor system and spawn a few officers with some actors that send messages to each other.
-    let mut actor_system = sids::actors::start_actor_system::<GenericMessage>();
+    let mut actor_system = sids::actors::start_actor_system::<GenericMessage, ResponseMessage>();
     let (tx, rx) = sids::actors::get_response_channel(&mut actor_system);
     let (btx, brx) = sids::actors::get_blocking_response_channel(&mut actor_system);
     let actor_type = SampleActor::new("Actor 1".to_string());
