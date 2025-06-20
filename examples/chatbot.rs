@@ -24,24 +24,24 @@ enum ChatMessage {
 }
 
 struct Alice {
-    partners: HashMap<String, ActorRef<ChatMessage>>,
+    partners: HashMap<String, ActorRef<ChatMessage, ResponseMessage>>,
 }
 impl Alice {
     fn new() -> Self {
         Alice { partners: HashMap::new() }
     }
     // Actor needs to be status to ensure that the actor is not moved before the message is sent.
-    fn add_partner<T: Actor<ChatMessage> + 'static>(&mut self, partner: T, name: String, thread_ref: &'static std::sync::atomic::AtomicUsize, message_ref: &'static std::sync::atomic::AtomicUsize) {
-        let (sender, receiver) = tokio::sync::mpsc::channel::<Message<ChatMessage>>(100);
-        let actor = ActorImpl::<T, ChatMessage>::new(Some(name.clone()), partner, receiver);
+    fn add_partner<T: Actor<ChatMessage, ResponseMessage> + 'static>(&mut self, partner: T, name: String, thread_ref: &'static std::sync::atomic::AtomicUsize, message_ref: &'static std::sync::atomic::AtomicUsize) {
+        let (sender, receiver) = tokio::sync::mpsc::channel::<Message<ChatMessage, ResponseMessage>>(100);
+        let actor = ActorImpl::<T, ChatMessage, ResponseMessage>::new(Some(name.clone()), partner, receiver);
         let reference = ActorRef::new(actor, sender, thread_ref, message_ref);
         self.partners.insert(name, reference);
     }
 
 }
     
-impl Actor<ChatMessage> for Alice { 
-    async fn receive(&mut self,message:Message<ChatMessage>) where Self:Sized+'static {
+impl Actor<ChatMessage, ResponseMessage> for Alice { 
+    async fn receive(&mut self,message:Message<ChatMessage, ResponseMessage>) where Self:Sized+'static {
         match message {
             Message {payload: Some(ChatMessage::Hello { name: name_string}), stop: _, responder: _, blocking: _} => {
                 info!("Alice received a Hello message");
@@ -76,8 +76,8 @@ impl Bob {
         Bob
     }
 }
-impl Actor<ChatMessage> for Bob {
-    async fn receive(&mut self,message:Message<ChatMessage>) where Self:Sized+'static {
+impl Actor<ChatMessage, ResponseMessage> for Bob {
+    async fn receive(&mut self,message:Message<ChatMessage, ResponseMessage>) where Self:Sized+'static {
         match message {
             Message {payload: Some(ChatMessage::Hello { name: name_string}), stop: _, responder: Some(courrier), blocking: _} => {
                 info!("{} received a Hello message", name_string);
@@ -96,7 +96,7 @@ impl Actor<ChatMessage> for Bob {
 
 
 async fn start_sample_actor_system() {
-    let mut actor_system = start_actor_system::<ChatMessage>();
+    let mut actor_system = start_actor_system::<ChatMessage, ResponseMessage>();
     let thread_ref = actor_system.get_thread_count_reference();
     let message_ref = actor_system.get_message_count_reference();
     let bob = Bob::new();
@@ -122,9 +122,9 @@ async fn start_sample_actor_system() {
         responder: Some(tx),
         blocking: None,
     };
-    send_message_by_id(&mut actor_system, 1, hello).await;
-    send_message_by_id(&mut actor_system, 1, goodbye).await;
-    send_message_by_id(&mut actor_system, 1, string_message).await;
+    send_message_by_id(&mut actor_system, 0, hello).await;
+    send_message_by_id(&mut actor_system, 0, goodbye).await;
+    send_message_by_id(&mut actor_system, 0, string_message).await;
     let response = rx.await.expect("Failed to receive response");
     info!("We received a response: {:?} from Alice", response);
     info!("Total messages sent: {}", actor_system.get_message_count());

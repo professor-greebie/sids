@@ -21,16 +21,18 @@ This is still a project in development, but it does illustrate how you might dev
 
 ### Basic Concepts:
 
-An actor - an actor implements an Actor<MType> Trait to include a `receive` function that accepts a message type of `Message<MType>`.
+An actor - an actor implements an Actor<MType< Response>> Trait to include a `receive` function that accepts a message type of `Message<MType, Response>`.
 
 The `Message` struct covers the most common Actor behaviors (stop, responses etc.), but you can add more as part of the payload, which is of type MType.
 
 MType can be any base type (`String`, `u32` etc.) or an enum provided that it has Send features and can have static lifetime. Enums are powerful in Rust, so they are highly recommended. See the [Rust documentation on enum types for more information](https://doc.rust-lang.org/book/ch06-00-enums.html)
 
+`Response` is any enum that the actors will use to send return messages back to the actor that sent them. A generic `ResponseMessage` can be used by default. 
+
 Once you choose an MType, then the `ActorSystem` will use the same message type throughout the system.  Currently, only one MType is allowed, however, with Rust's enums, there is a lot of capacity for variance on the types of messages that can be sent.
 
 ```rust 
-let mut actor_system = sids::actors::start_actor_system::<MType>();
+let mut actor_system = sids::actors::start_actor_system::<MType, Response>();
 ```
 
 Starting an actor system initializes the system and runs a 'boss' actor called the `Guardian` with an id of 0. You can ping the boss using `sids::actors::ping_actor_system(&actor_system);`
@@ -40,7 +42,7 @@ You can add an actor to the system, by creating a structure that implements the 
 ```rust
 
 use sids::actors::actor::Actor;
-use sids::actors::messages::Message;
+use sids::actors::messages::{Message, ResponseMessage};
 use log::info;
 
 #[derive(Debug, Clone)]
@@ -52,8 +54,8 @@ enum MyMessage {
 // you can include some attributes like a name if you wish
 struct MyActor;
 // Actors must have static lifetime
-impl Actor<MyMessage> for MyActor where MyActor: 'static  {
-    async fn receive(&mut self, message: Message<MyMessage>) {
+impl Actor<MyMessage, ResponseMessage> for MyActor where MyActor: 'static  {
+    async fn receive(&mut self, message: Message<MyMessage, ResponseMessage>) {
         if let Message { 
                 // optional payload contains MyMessage
                 payload, 
@@ -80,7 +82,7 @@ async fn main() -> Result(()) {
     let my_actor = MyActor;
 
 
-    let mut actor_system = sids::actors::start_actor_system::<MyMessage>().await;
+    let mut actor_system = sids::actors::start_actor_system::<MyMessage, ResponseMessage>().await;
     // gets a oneshot channel to receive a response from the system.
     let (tx, rx) = sids::actors::get_response_channel(&actor_system);
     let message = Message {
