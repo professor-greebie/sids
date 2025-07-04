@@ -153,6 +153,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         let actor_ref = ActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
         let actor_id = self.actors.len() as u32;
         self.actors.insert(actor_id, actor_ref);
+        info!("Actor spawned successfully with id: {}", actor_id);
     }
 
     pub(super) fn spawn_blocking_actor<T>(&mut self, actor: T, name: Option<String>)
@@ -165,6 +166,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         let actor_ref = BlockingActorRef::new(actor_impl, snd);
         let actor_id = self.blocking_actors.len() as u32;
         self.blocking_actors.insert(actor_id, actor_ref);
+        info!("Blocking actor spawned successfully with id: {}", actor_id);
     }
 
     pub(super) async fn send_message_to_actor(&mut self, actor_id: u32, message: Message<MType, Response>) {

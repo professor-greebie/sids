@@ -20,9 +20,9 @@ impl <MType: Send, Response: Send> ActorRef <MType, Response> {
         info!(actor = "Tokio Actor"; "Spawning a Tokio Actor");
         tokio::spawn(async move {
             thread_monitor.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            run_an_actor::<MType, Response, T>(actor).await;
-            
+            run_an_actor::<MType, Response, T>(actor).await;          
         });
+        info!(actor = "Tokio Actor"; "Actor spawned successfully");
         ActorRef { send_monitor, sender }
     }
 
@@ -45,6 +45,7 @@ impl <MType: Send, Response: Send> BlockingActorRef <MType, Response> {
         std::thread::spawn(move || async {
             run_a_blocking_actor(actor).await;
         });
+        info!(actor = "Blocking Actor"; "Blocking Actor spawned successfully");
         BlockingActorRef {
             sender
         }
