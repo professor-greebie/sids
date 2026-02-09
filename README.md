@@ -1,13 +1,13 @@
 # SIDS - An Actor Model Approach to Data Collection in RUST
 
-This is an experimental actor-model system library built in rust. The repository has a few Mermaid diagrams 
+This is an experimental actor-model system library built in rust. The repository has a few Mermaid diagrams
 and exxamples available for you to examine if you are interested in implementing the approach yourself.
 
 ## Getting Started
 
 Run the example logging demonstration.
 
-```
+```bash
 git clone https://github.com/professor-greebie/sids
 cd sids
 cargo run --example loggers
@@ -19,7 +19,7 @@ This project demonstrates a simple approach to building actors in Rust, allowing
 
 This is still a project in development, but it does illustrate how you might develop an actor system from scratch in Rust.
 
-### Basic Concepts:
+### Basic Concepts
 
 An actor - an actor implements an Actor<MType< Response>> Trait to include a `receive` function that accepts a message type of `Message<MType, Response>`.
 
@@ -27,17 +27,17 @@ The `Message` struct covers the most common Actor behaviors (stop, responses etc
 
 MType can be any base type (`String`, `u32` etc.) or an enum provided that it has Send features and can have static lifetime. Enums are powerful in Rust, so they are highly recommended. See the [Rust documentation on enum types for more information](https://doc.rust-lang.org/book/ch06-00-enums.html)
 
-`Response` is any enum that the actors will use to send return messages back to the actor that sent them. A generic `ResponseMessage` can be used by default. 
+`Response` is any enum that the actors will use to send return messages back to the actor that sent them. A generic `ResponseMessage` can be used by default.
 
 Once you choose an MType, then the `ActorSystem` will use the same message type throughout the system.  Currently, only one MType is allowed, however, with Rust's enums, there is a lot of capacity for variance on the types of messages that can be sent.
 
-```rust 
+```rust
 let mut actor_system = sids::actors::start_actor_system::<MType, Response>();
 ```
 
 Starting an actor system initializes the system and runs a 'boss' actor called the `Guardian` with an id of 0. You can ping the boss using `sids::actors::ping_actor_system(&actor_system);`
 
-You can add an actor to the system, by creating a structure that implements the Actor<MType> trait. All actors in the system must receive a Message<MType>.
+You can add an actor to the system, by creating a structure that implements the Actor`<MType>` trait. All actors in the system must receive a Message`<MType>`.
 
 ```rust
 
