@@ -37,7 +37,7 @@ pub fn get_response_channel<MType: Send + Clone + 'static, Response: Send + Clon
     actor_system.create_response_channel()
 }
 
-pub fn get_blocking_response_channel<MType: Send + Clone +'static, Response: Send + Clone + 'static>(actor_system: &ActorSystem<MType, Response>) -> (std::sync::mpsc::Sender<Response>, std::sync::mpsc::Receiver<Response>) {
+pub fn get_blocking_response_channel<MType: Send + Clone +'static, Response: Send + Clone + 'static>(actor_system: &ActorSystem<MType, Response>) -> (std::sync::mpsc::SyncSender<Response>, std::sync::mpsc::Receiver<Response>) {
     actor_system.create_blocking_response_channel()
 }
 

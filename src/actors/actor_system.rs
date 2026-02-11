@@ -43,30 +43,27 @@ impl<MType: Send + Clone> Actor<MType, ResponseMessage> for Guardian {
 /// use sids::actors;
 /// use sids::actors::messages::{Message, ResponseMessage};
 /// use sids::actors::actor::Actor;
-/// use log::info;
 ///
 /// /// Sample actor type to receive message.
 ///
 /// struct SampleActor;
-/// impl Actor<String> for SampleActor {
-///    fn receive(&mut self, message: Message<String>) {
-///       info!("SampleActor received message: {:?}", message.payload);
-///       message.responder.unwrap().send(ResponseMessage::SUCCESS).expect("Failed to send response");
+/// impl Actor<String, ResponseMessage> for SampleActor {
+///    async fn receive(&mut self, message: Message<String, ResponseMessage>) {
+///       message.responder.unwrap().send(ResponseMessage::Success).expect("Failed to send response");
 ///    }
-///
 /// }
 ///
 /// pub async fn run_system() {
 ///    let actor = SampleActor;
 ///    
 ///    // Creates a new actor system that uses String as the message type.
-///    let mut actor_system = actors::start_actor_system::<String>();
+///    let mut actor_system = actors::start_actor_system::<String, ResponseMessage>();
 ///    let (tx, rx) = actors::get_response_channel(&mut actor_system);
 ///    let message = Message { payload: Some("My String Message".to_string()), stop: false, responder: Some(tx), blocking: None };
-///    actors::spawn_actor::<String, SampleActor>(&mut actor_system, actor, Some("Sample Actor".to_string())).await;
+///    actors::spawn_actor(&mut actor_system, actor, Some("Sample Actor".to_string())).await;
 ///    actors::send_message_by_id(&mut actor_system, 1, message).await;
 ///    let response = rx.await.expect("Failed to receive response");
-///    assert_eq!(response, ResponseMessage::SUCCESS);
+///    assert_eq!(response, ResponseMessage::Success);
 /// }
 ///
 /// ```
@@ -110,10 +107,10 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFac
     fn create_blocking_response_channel(
         &self,
     ) -> (
-        std::sync::mpsc::Sender<Response>,
+        std::sync::mpsc::SyncSender<Response>,
         std::sync::mpsc::Receiver<Response>,
     ) {
-        std::sync::mpsc::channel::<Response>()
+        std::sync::mpsc::sync_channel::<Response>(1)
     }
 }
 
@@ -230,13 +227,3 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
     }
 }
 
-// grcov-excl-start
-
-#[cfg(test)]
-mod tests {
-
-    #[tokio::test]
-    async fn test_actor_system_started() {}
-}
-
-// grcov-excl-stop
