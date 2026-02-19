@@ -1,0 +1,4 @@
+[env]
+TMPDIR = { value = "C:\\Studentwork\\Dev\\sids\\target\\tmp", force = true }
+TEMP = { value = "C:\\Studentwork\\Dev\\sids\\target\\tmp", force = true }
+TMP = { value = "C:\\Studentwork\\Dev\\sids\\target\\tmp", force = true }

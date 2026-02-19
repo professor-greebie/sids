@@ -140,7 +140,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         }
     }
 
-    pub(super) async fn spawn_actor<T>(&mut self, actor: T, name: Option<String>)
+    pub async fn spawn_actor<T>(&mut self, actor: T, name: Option<String>)
     where
         T: Actor<MType, Response> + 'static,
     {
@@ -206,8 +206,12 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
             .expect("Failed to send message");
     }
 
-    pub (super) fn get_actor_ref(&self, id: u32) -> ActorRef<MType, Response> {
+    pub fn get_actor_ref(&self, id: u32) -> ActorRef<MType, Response> {
         self.actors.get(&id).expect("Failed to get actor").clone()
+    }
+
+    pub fn get_actor_count(&self) -> usize {
+        self.actors.len()
     }
 
     pub fn get_thread_count_reference(&self) -> &'static AtomicUsize {

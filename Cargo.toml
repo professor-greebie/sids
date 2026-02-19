@@ -18,9 +18,10 @@ trait-variant = "0.1.2"
 log = {version = "0.4", features = ["kv"]}
 env_logger = "0.11.8"
 mockall = "0.13.1"
+reqwest = { version = "0.12", optional = true }
 
 [features]
-streams = []
+streaming = ["reqwest"]
 etl = []
 
 

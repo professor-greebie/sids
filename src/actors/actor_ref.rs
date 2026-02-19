@@ -12,7 +12,7 @@ pub struct ActorRef<MType, Response>
 where MType: Send + 'static, 
 Response: Send + 'static {
     send_monitor: &'static AtomicUsize,
-    sender: tokio::sync::mpsc::Sender<Message<MType, Response>>,
+    pub sender: tokio::sync::mpsc::Sender<Message<MType, Response>>,
 }
 
 impl <MType: Send, Response: Send> ActorRef <MType, Response> {
