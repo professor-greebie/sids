@@ -58,6 +58,7 @@ where
 pub mod consumers {
     use super::StreamMessage;
     use log::info;
+    use std::sync::{Arc, Mutex};
 
     /// Print data to console
     pub fn print_console(msg: StreamMessage) {
@@ -78,8 +79,9 @@ pub mod consumers {
     }
 
     /// Collect data into a vector (requires external storage)
-    pub fn create_collector() -> (impl Fn(StreamMessage), std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>>) {
-        let storage = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    #[allow(clippy::type_complexity)]
+    pub fn create_collector() -> (impl Fn(StreamMessage), Arc<Mutex<Vec<Vec<u8>>>>) {
+        let storage = Arc::new(Mutex::new(Vec::new()));
         let storage_clone = storage.clone();
         
         let collector = move |msg: StreamMessage| {
@@ -94,5 +96,45 @@ pub mod consumers {
     /// Ignore all data (useful for testing)
     pub fn ignore(_msg: StreamMessage) {
         // Do nothing
+    }
+
+    /// Create a consumer that applies a function to each line of text
+    /// 
+    /// For StreamMessage::Text, splits by lines and applies the function to each line.
+    /// For StreamMessage::Data, converts to UTF-8 if possible and processes lines.
+    pub fn for_each<F>(f: F) -> impl Fn(StreamMessage)
+    where
+        F: Fn(&str) + Send + 'static,
+    {
+        move |msg: StreamMessage| {
+            match msg {
+                StreamMessage::Text(text) => {
+                    for line in text.lines() {
+                        f(line);
+                    }
+                },
+                StreamMessage::Data(bytes) => {
+                    if let Ok(text) = String::from_utf8(bytes) {
+                        for line in text.lines() {
+                            f(line);
+                        }
+                    }
+                },
+                StreamMessage::Complete => {},
+                StreamMessage::Error(_) => {},
+            }
+        }
+    }
+
+    /// Create a consumer that applies a function to each message
+    /// 
+    /// Unlike for_each which processes line-by-line, this processes entire messages
+    pub fn for_each_message<F>(f: F) -> impl Fn(StreamMessage)
+    where
+        F: Fn(StreamMessage) + Send + 'static,
+    {
+        move |msg: StreamMessage| {
+            f(msg);
+        }
     }
 }

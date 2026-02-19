@@ -1,9 +1,8 @@
 use crate::actors::messages::Message;
 use crate::actors::actor::Actor;
-use crate::actors::actor_ref::ActorRef;
 use crate::actors::actor_system::ActorSystem;
 use super::stream_message::{NotUsed, StreamMessage};
-use super::materializer::{Materializer, StreamMaterializer};
+use super::materializer::StreamMaterializer;
 use super::flow::Flow;
 use super::sink::Sink;
 use log::info;
@@ -13,6 +12,7 @@ use std::time::Duration;
 use reqwest;
 
 #[cfg(feature = "streaming")]
+#[derive(Debug)]
 pub struct Source<SourceType, Materializer> {
     mat: Materializer,
     data: Option<SourceType>,
@@ -32,6 +32,10 @@ pub enum SourceError {
     Timeout,
     EmptyResponse,
     TooLarge(usize),
+    FileNotFound(String),
+    FileReadError(String),
+    PermissionDenied(String),
+    InvalidPath(String),
 }
 
 impl<T, Materializer> Source<T, Materializer> {
@@ -41,6 +45,120 @@ impl<T, Materializer> Source<T, Materializer> {
 
     pub fn to_materializer(&self) -> &Materializer {
         &self.mat
+    }
+
+    /// Get a reference to the data in the source
+    pub fn data(&self) -> Option<&T> {
+        self.data.as_ref()
+    }
+
+    /// Get the size/length of the data if it implements a size method
+    pub fn data_len(&self) -> Option<usize> 
+    where
+        T: AsRef<[u8]>
+    {
+        self.data.as_ref().map(|d| d.as_ref().len())
+    }
+}
+
+impl Source<String, NotUsed> {
+    /// Create a source from a vector of strings
+    /// 
+    /// Each string will be joined with newlines
+    /// 
+    /// # Example
+    /// ```no_run
+    /// let items = vec!["one".to_string(), "two".to_string(), "three".to_string()];
+    /// let source = Source::from_items(items);
+    /// ```
+    pub fn from_items(items: Vec<String>) -> Self {
+        let data = items.join("\n");
+        Source { 
+            mat: NotUsed, 
+            data: Some(data) 
+        }
+    }
+
+    /// Map the text data in this source with a transformation function
+    /// 
+    /// # Example
+    /// ```no_run
+    /// let source = Source::new("hello".to_string(), NotUsed);
+    /// let mapped = source.map(|text| text.to_uppercase());
+    /// ```
+    pub fn map<F>(mut self, f: F) -> Self 
+    where
+        F: FnOnce(String) -> String,
+    {
+        if let Some(data) = self.data.take() {
+            self.data = Some(f(data));
+        }
+        self
+    }
+
+    /// Filter the text data, retaining it only if the predicate returns true
+    /// 
+    /// If the predicate returns false, the source will have no data
+    pub fn filter<F>(mut self, f: F) -> Self 
+    where
+        F: FnOnce(&String) -> bool,
+    {
+        if let Some(data) = &self.data {
+            if !f(data) {
+                self.data = None;
+            }
+        }
+        self
+    }
+
+    /// Process each line of text with a function
+    pub fn map_lines<F>(mut self, f: F) -> Self 
+    where
+        F: Fn(&str) -> String,
+    {
+        if let Some(data) = self.data.take() {
+            let mapped_lines: Vec<String> = data.lines().map(f).collect();
+            self.data = Some(mapped_lines.join("\n"));
+        }
+        self
+    }
+
+    /// Filter lines based on a predicate
+    pub fn filter_lines<F>(mut self, f: F) -> Self 
+    where
+        F: Fn(&str) -> bool,
+    {
+        if let Some(data) = self.data.take() {
+            let filtered_lines: Vec<&str> = data.lines().filter(|line| f(line)).collect();
+            self.data = Some(filtered_lines.join("\n"));
+        }
+        self
+    }
+}
+
+impl Source<Vec<u8>, NotUsed> {
+    /// Map the byte data in this source with a transformation function
+    pub fn map<F>(mut self, f: F) -> Self 
+    where
+        F: FnOnce(Vec<u8>) -> Vec<u8>,
+    {
+        if let Some(data) = self.data.take() {
+            self.data = Some(f(data));
+        }
+        self
+    }
+
+    /// Filter the byte data, retaining it only if the predicate returns true
+    pub fn filter<F>(mut self, f: F) -> Self 
+    where
+        F: FnOnce(&Vec<u8>) -> bool,
+    {
+        if let Some(data) = &self.data {
+            if !f(data) {
+                self.data = None;
+            }
+        }
+        self
     }
 }
 
@@ -64,24 +182,17 @@ impl Source<Vec<u8>, NotUsed> {
     /// * `Ok(Source)` - Successfully fetched data
     /// * `Err(SourceError)` - Failed with detailed error information
     pub async fn from_url(url: &str) -> Result<Self, SourceError> {
-        // Validate URL format
         let parsed_url = reqwest::Url::parse(url)
             .map_err(|e| SourceError::InvalidUrl(format!("Invalid URL format: {}", e)))?;
-
-        // Only allow HTTP(S) schemes for safety
         if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
             return Err(SourceError::InvalidUrl(
                 format!("Only HTTP(S) URLs are supported, got: {}", parsed_url.scheme())
             ));
         }
-
-        // Create client with timeout
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| SourceError::NetworkError(format!("Failed to build client: {}", e)))?;
-
-        // Make the request
         let response = client
             .get(url)
             .send()
@@ -148,13 +259,136 @@ impl Source<String, NotUsed> {
             data: Some(text),
         })
     }
+
+    /// Creates a source from a file path with safeguards.
+    /// 
+    /// `from_file` reads a file and creates a source from its contents.
+    /// 
+    /// # Arguments
+    /// * `path` - The file path to read from
+    /// 
+    /// # Safeguards
+    /// * Validates file exists
+    /// * Checks file permissions
+    /// * Limits file size to 10MB
+    /// * Validates UTF-8 encoding
+    /// * Checks for empty files
+    /// 
+    /// # Returns
+    /// * `Ok(Source)` - Successfully read file
+    /// * `Err(SourceError)` - Failed with detailed error information
+    pub fn from_file(path: &str) -> Result<Self, SourceError> {
+        use std::path::Path;
+        use std::fs;
+        
+        // Validate path
+        let file_path = Path::new(path);
+        
+        // Check if path is valid
+        if path.is_empty() {
+            return Err(SourceError::InvalidPath("Empty path provided".to_string()));
+        }
+        
+        // Check if file exists
+        if !file_path.exists() {
+            return Err(SourceError::FileNotFound(format!("File not found: {}", path)));
+        }
+        
+        // Check if it's a file (not a directory)
+        if !file_path.is_file() {
+            return Err(SourceError::InvalidPath(format!("Path is not a file: {}", path)));
+        }
+        
+        // Check file metadata for size
+        let metadata = fs::metadata(file_path)
+            .map_err(|e| SourceError::FileReadError(format!("Failed to read file metadata: {}", e)))?;
+        
+        const MAX_SIZE: u64 = 10 * 1024 * 1024; // 10MB
+        if metadata.len() > MAX_SIZE {
+            return Err(SourceError::TooLarge(metadata.len() as usize));
+        }
+        
+        // Check for empty file
+        if metadata.len() == 0 {
+            return Err(SourceError::EmptyResponse);
+        }
+        
+        // Read file contents
+        let contents = fs::read_to_string(file_path)
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    SourceError::PermissionDenied(format!("Permission denied: {}", path))
+                } else if e.kind() == std::io::ErrorKind::InvalidData {
+                    SourceError::InvalidResponse(format!("File contains invalid UTF-8: {}", path))
+                } else {
+                    SourceError::FileReadError(format!("Failed to read file: {}", e))
+                }
+            })?;
+        
+        Ok(Source {
+            mat: NotUsed,
+            data: Some(contents),
+        })
+    }
+}
+
+#[cfg(feature = "streaming")]
+impl Source<Vec<u8>, NotUsed> {
+    /// Creates a source from a file path as raw bytes.
+    /// 
+    /// Similar to `from_file` but returns raw bytes without UTF-8 validation.
+    /// Useful for binary files.
+    pub fn from_file_bytes(path: &str) -> Result<Self, SourceError> {
+        use std::path::Path;
+        use std::fs;
+        
+        let file_path = Path::new(path);
+        
+        if path.is_empty() {
+            return Err(SourceError::InvalidPath("Empty path provided".to_string()));
+        }
+        
+        if !file_path.exists() {
+            return Err(SourceError::FileNotFound(format!("File not found: {}", path)));
+        }
+        
+        if !file_path.is_file() {
+            return Err(SourceError::InvalidPath(format!("Path is not a file: {}", path)));
+        }
+        
+        let metadata = fs::metadata(file_path)
+            .map_err(|e| SourceError::FileReadError(format!("Failed to read file metadata: {}", e)))?;
+        
+        const MAX_SIZE: u64 = 10 * 1024 * 1024; // 10MB
+        if metadata.len() > MAX_SIZE {
+            return Err(SourceError::TooLarge(metadata.len() as usize));
+        }
+        
+        if metadata.len() == 0 {
+            return Err(SourceError::EmptyResponse);
+        }
+        
+        let contents = fs::read(file_path)
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    SourceError::PermissionDenied(format!("Permission denied: {}", path))
+                } else {
+                    SourceError::FileReadError(format!("Failed to read file: {}", e))
+                }
+            })?;
+        
+        Ok(Source {
+            mat: NotUsed,
+            data: Some(contents),
+        })
+    }
 }
 
 /// SourceActor emits data into the stream
 pub struct SourceActor {
     name: String,
     data: Vec<StreamMessage>,
-    current_index: usize,
+    _current_index: usize,
     downstream: Option<tokio::sync::mpsc::Sender<Message<StreamMessage, StreamMessage>>>,
 }
 
@@ -163,7 +397,7 @@ impl SourceActor {
         SourceActor {
             name,
             data,
-            current_index: 0,
+            _current_index: 0,
             downstream: None,
         }
     }

@@ -104,7 +104,7 @@ async fn start_sample_actor_system() {
     let bob = Bob::new();
     let mut alice = Alice::new();
     alice.add_partner(bob, "Bob".to_string(), thread_ref, message_ref);
-    let (tx, rx) = get_response_channel(&mut actor_system);
+    let (tx, rx) = get_response_channel(&actor_system);
     spawn_actor(&mut actor_system, alice, Some("Alice".to_string())).await;
     let hello = Message {
         payload: Some(ChatMessage::Hello { name: "Bob".to_string() }),

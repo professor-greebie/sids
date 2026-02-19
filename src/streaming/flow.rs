@@ -31,6 +31,37 @@ where
     pub fn set_downstream(&mut self, sender: tokio::sync::mpsc::Sender<Message<StreamMessage, StreamMessage>>) {
         self.downstream = Some(sender);
     }
+
+    /// Chain another transformation to this flow
+    /// 
+    /// Creates a new Flow that applies both transformations in sequence
+    pub fn map<G>(self, g: G) -> Flow<impl Fn(StreamMessage) -> StreamMessage + Send + 'static>
+    where
+        G: Fn(StreamMessage) -> StreamMessage + Send + 'static,
+    {
+        let name = format!("{}_mapped", self.name);
+        let f = self.transform;
+        Flow::new(name, move |msg| g(f(msg)))
+    }
+
+    /// Add a filter to this flow
+    /// 
+    /// Messages that don't pass the predicate are converted to Error messages
+    pub fn filter<P>(self, predicate: P) -> Flow<impl Fn(StreamMessage) -> StreamMessage + Send + 'static>
+    where
+        P: Fn(&StreamMessage) -> bool + Send + 'static,
+    {
+        let name = format!("{}_filtered", self.name);
+        let f = self.transform;
+        Flow::new(name, move |msg| {
+            let transformed = f(msg);
+            if predicate(&transformed) {
+                transformed
+            } else {
+                StreamMessage::Error("Filtered out".to_string())
+            }
+        })
+    }
 }
 
 impl<F> Actor<StreamMessage, StreamMessage> for Flow<F>

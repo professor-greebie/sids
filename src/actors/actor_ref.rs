@@ -55,7 +55,7 @@ impl <MType: Send, Response: Send> BlockingActorRef <MType, Response> {
         }
     }
     pub (super) fn send(&self, message: Message<MType, Response>) {
-        let _ = self.sender.send(message).expect("Failed to send message to blocking actor");
+            self.sender.send(message).expect("Failed to send message to blocking actor");
     }
 }
 
@@ -108,12 +108,9 @@ mod tests {
     impl Actor<BlockingPayload, ResponseMessage> for SampleBlockingActor {
         async fn receive(&mut self, message: Message<BlockingPayload, ResponseMessage>) {
             info!("Received blocking messsage");
-            match message {
-                Message {payload, stop: _, responder: _, blocking} => {
-                    info!("Received messsage : {:?}", payload.unwrap().message);
-                    let _ = blocking.expect("blocking is None.").send(ResponseMessage::Success).unwrap();
-                }
-            }
+            let Message {payload, stop: _, responder: _, blocking} = message;
+            info!("Received messsage : {:?}", payload.unwrap().message);
+            blocking.expect("blocking is None.").send(ResponseMessage::Success).unwrap();
         }
     }
 
@@ -146,10 +143,10 @@ mod tests {
         
         let payload = BlockingPayload { message: "Test".to_string() };
         let message = Message {payload: Some(payload), stop: false, responder: None, blocking: Some(rs_tx) };
-        let _ = actor_ref.send(message);
+        actor_ref.send(message);
         assert!(rs_rx.recv().is_ok());
         let stop_message = Message {payload: None, stop: true, responder: None, blocking: None };
-        let _ = actor_ref.send(stop_message);
+        actor_ref.send(stop_message);
         
     }
 }

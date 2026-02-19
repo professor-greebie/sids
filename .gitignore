@@ -5,3 +5,10 @@ tmp_*
 llvm
 llvm/*
 *_sample
+coverage/
+*.profdata
+
+# Node.js / markdownlint
+node_modules/
+package.json
+package-lock.json

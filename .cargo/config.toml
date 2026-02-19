@@ -2,3 +2,7 @@
 TMPDIR = { value = "C:\\Studentwork\\Dev\\sids\\target\\tmp", force = true }
 TEMP = { value = "C:\\Studentwork\\Dev\\sids\\target\\tmp", force = true }
 TMP = { value = "C:\\Studentwork\\Dev\\sids\\target\\tmp", force = true }
+# Coverage-specific environment variables
+CARGO_LLVM_COV_TARGET_DIR = { value = "C:\\Studentwork\\Dev\\sids\\target", force = true }
+# Note: LLVM_PROFILE_FILE is managed by cargo-llvm-cov itself, do not override
+# LLVM_PROFILE_FILE = { value = "C:\\Studentwork\\Dev\\sids\\target\\coverage\\%p-%m.profraw", force = true }

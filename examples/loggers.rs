@@ -68,8 +68,8 @@ async fn start_sample_actor_system() {
     
     // Start an actor system and spawn a few officers with some actors that send messages to each other.
     let mut actor_system = sids::actors::start_actor_system::<GenericMessage, ResponseMessage>();
-    let (tx, rx) = sids::actors::get_response_channel(&mut actor_system);
-    let (btx, brx) = sids::actors::get_blocking_response_channel(&mut actor_system);
+    let (tx, rx) = sids::actors::get_response_channel(&actor_system);
+    let (btx, brx) = sids::actors::get_blocking_response_channel(&actor_system);
     let actor_type = SampleActor::new("Actor 1".to_string());
     let actor_type2 = SampleActor::new("Actor 2".to_string());
     let actor_type3 = SampleActor::new("Actor 3".to_string());
@@ -103,7 +103,7 @@ async fn start_sample_actor_system() {
         responder: None,
         blocking: Some(btx),
     };
-    ping_actor_system(&mut actor_system).await;
+    ping_actor_system(&actor_system).await;
     send_message_by_id(&mut actor_system, 0, message).await;
     send_message_by_id(&mut actor_system, 1, message2).await;
     send_message_by_id(&mut actor_system, 2, message3).await;
