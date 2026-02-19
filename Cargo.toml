@@ -1,14 +1,14 @@
 [package]
 name = "sids"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
-authors = ["Ryan Deschamps <rdeschamps@conestogac.on.ca"]
+authors = ["Ryan Deschamps <rdeschamps@conestogac.on.ca>"]
 repository = "https://github.com/professor-greebie/sids"
-description = "Sids is a sample actor-model scheme providing abstraction over actor types and messages that can be sent across threads."
-keywords = ["actor-model", "concurrency"]
-categories = ["asynchronous", "concurrency", "rust-patterns", "data-structures", "virtualization" ]
-exclude = ["/architecture", "/target"]
-license-file = "LICENSE.md"
+description = "An actor-model concurrency framework providing abstraction over async and blocking actors."
+keywords = ["actor-model", "concurrency", "tokio"]
+categories = ["asynchronous", "concurrency"]
+exclude = ["/architecture", "/examples"]
+license = "Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
