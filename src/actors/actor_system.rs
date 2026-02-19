@@ -160,7 +160,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         info!("Spawning blocking actor within the actor system.");
         let (snd, rec) = self.create_blocking_actor_channel();
         let actor_impl = BlockingActorImpl::new(name, actor, rec);
-        let actor_ref = BlockingActorRef::new(actor_impl, snd);
+        let actor_ref = BlockingActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
         let actor_id = self.blocking_actors.len() as u32;
         self.blocking_actors.insert(actor_id, actor_ref);
         info!("Blocking actor spawned successfully with id: {}", actor_id);
