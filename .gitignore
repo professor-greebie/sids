@@ -12,3 +12,6 @@ coverage/
 node_modules/
 package.json
 package-lock.json
+
+# Cargo lock file (not needed for libraries)
+Cargo.lock
