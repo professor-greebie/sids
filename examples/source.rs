@@ -12,7 +12,11 @@ use sids::streaming::{
     flow::Flow,
     sink::Sink,
     stream_message::StreamMessage,
+    stream_message::NotUsed,
 };
+
+#[cfg(feature = "streaming")]
+use sids::actors::messages::Message;
 
 fn get_loggings() {
     let env = Env::default().filter_or("MY_LOG_LEVEL", "info");
@@ -20,13 +24,10 @@ fn get_loggings() {
 }
 
 #[cfg(feature = "streaming")]
+/// Generate a Source - Sink relationship and send data to the structures.
 async fn example_simple_stream() {
     info!("=== Example 1: Simple Source to Sink ===");
-    
-    // Create a simple text source
-    let source = Source::new("Hello, Streaming World!".to_string(), sids::streaming::stream_message::NotUsed);
-    
-    // Create a sink that prints to console
+    let source = Source::new("Hello, Streaming World!".to_string(), NotUsed);
     let sink = Sink::new(
         "PrintSink".to_string(),
         |msg: StreamMessage| {
@@ -37,27 +38,20 @@ async fn example_simple_stream() {
             }
         },
     );
-    
-    // Create actor system and materialize the stream
     let mut actor_system = start_actor_system();
     let _materializer = source.to_sink(&mut actor_system, sink).await;
-    
-    // Give actors time to process
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     info!("Simple stream example completed");
 }
 
 #[cfg(feature = "streaming")]
+/// Create a stream with a transformative Flow in the middle.
 async fn example_stream_with_flow() {
     info!("=== Example 2: Source -> Flow -> Sink ===");
-    
-    // Create a text source
     let source = Source::new(
         "hello from the streaming pipeline".to_string(),
         sids::streaming::stream_message::NotUsed,
     );
-    
-    // Create a flow that converts text to uppercase
     let flow = Flow::new(
         "UppercaseFlow".to_string(),
         |msg: StreamMessage| match msg {
@@ -65,8 +59,6 @@ async fn example_stream_with_flow() {
             other => other,
         },
     );
-    
-    // Create a sink that prints the transformed data
     let sink = Sink::new(
         "OutputSink".to_string(),
         |msg: StreamMessage| {
@@ -77,8 +69,6 @@ async fn example_stream_with_flow() {
             }
         },
     );
-    
-    // Create actor system and materialize the stream with flow
     let mut actor_system = start_actor_system();
     let _materializer = source.via_to_sink(&mut actor_system, flow, sink).await;
     
@@ -90,8 +80,6 @@ async fn example_stream_with_flow() {
 #[cfg(feature = "streaming")]
 async fn example_http_source() {
     info!("=== Example 3: HTTP Source with Error Handling ===");
-    
-    // Try to fetch data from a URL (using a simple API endpoint)
     match Source::from_url_text("https://httpbin.org/get").await {
         Ok(source) => {
             info!("Successfully fetched data from URL");
@@ -111,8 +99,6 @@ async fn example_http_source() {
                     other => other,
                 },
             );
-            
-            // Create a sink that prints the data
             let sink = Sink::new(
                 "HttpSink".to_string(),
                 |msg: StreamMessage| {
@@ -124,8 +110,6 @@ async fn example_http_source() {
                     }
                 },
             );
-            
-            // Materialize the stream
             let mut actor_system = start_actor_system();
             let _materializer = source.via_to_sink(&mut actor_system, flow, sink).await;
             
@@ -142,12 +126,8 @@ async fn example_http_source() {
 #[cfg(feature = "streaming")]
 async fn example_byte_source() {
     info!("=== Example 4: Binary Data Processing ===");
-    
-    // Create a byte source
     let data = vec![72, 101, 108, 108, 111]; // "Hello" in bytes
     let source = Source::new(data, sids::streaming::stream_message::NotUsed);
-    
-    // Create a flow that converts bytes to text
     let flow = Flow::new(
         "ByteToTextFlow".to_string(),
         |msg: StreamMessage| match msg {
@@ -160,8 +140,6 @@ async fn example_byte_source() {
             other => other,
         },
     );
-    
-    // Create a sink
     let sink = Sink::new(
         "ByteSink".to_string(),
         |msg: StreamMessage| {
@@ -173,13 +151,175 @@ async fn example_byte_source() {
             }
         },
     );
-    
-    // Materialize
     let mut actor_system = start_actor_system();
     let _materializer = source.via_to_sink(&mut actor_system, flow, sink).await;
-    
-    // Give actors time to process
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+}
+
+#[cfg(feature = "streaming")]
+async fn example_vector_of_items() {
+    info!("=== Example 5: Processing a Vector of Items ===");
+    let items = vec!["apple", "banana", "cherry", "date", "elderberry"];
+    use sids::streaming::source::SourceActor;
+    let stream_messages: Vec<StreamMessage> = items
+        .iter()
+        .map(|item| StreamMessage::Text(item.to_string()))
+        .collect();
+    
+    let source_actor = SourceActor::new("VectorSource".to_string(), stream_messages);
+    use std::sync::{Arc, Mutex};
+    let counter = Arc::new(Mutex::new(0));
+    let counter_clone = counter.clone();
+    
+    let flow = Flow::new(
+        "IndexAndUppercaseFlow".to_string(),
+        move |msg: StreamMessage| {
+            match msg {
+                StreamMessage::Text(text) => {
+                    let mut count = counter_clone.lock().unwrap();
+                    *count += 1;
+                    let idx = *count;
+                    StreamMessage::Text(format!("Item {}: {}", idx, text.to_uppercase()))
+                }
+                other => other,
+            }
+        },
+    );
+    let sink = Sink::new(
+        "VectorSink".to_string(),
+        |msg: StreamMessage| {
+            match msg {
+                StreamMessage::Text(text) => println!("  {}", text),
+                StreamMessage::Complete => {
+                    println!("  --- All items processed! ---");
+                },
+                _ => {}
+            }
+        },
+    );
+    
+    // Start the actor system to help materialize the stream
+    let mut actor_system = start_actor_system();
+    
+    // Spawn sink first
+    let sink_id = actor_system.get_actor_count() as u32;
+    actor_system.spawn_actor(sink, Some("Sink".to_string())).await;
+    let sink_ref = actor_system.get_actor_ref(sink_id);
+    
+    // Spawn flow
+    let mut flow_actor = flow;
+    flow_actor.set_downstream(sink_ref.sender.clone());
+    let flow_id = actor_system.get_actor_count() as u32;
+    actor_system.spawn_actor(flow_actor, Some("Flow".to_string())).await;
+    let flow_ref = actor_system.get_actor_ref(flow_id);
+    let mut source = source_actor;
+    source.set_downstream(flow_ref.sender.clone());
+    let source_id = actor_system.get_actor_count() as u32;
+    actor_system.spawn_actor(source, Some("Source".to_string())).await;
+    let source_ref = actor_system.get_actor_ref(source_id);
+    
+    source_ref.send(Message {
+        payload: Some(StreamMessage::Text("start".to_string())),
+        stop: false,
+        responder: None,
+        blocking: None,
+    }).await;
+    
+    // Give actors time to process all items
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    info!("Vector processing example completed");
+}
+
+#[cfg(feature = "streaming")]
+async fn example_vector_aggregation() {
+    info!("=== Example 6: Vector Processing with Aggregation ===");
+    let numbers = vec!["10", "20", "30", "40", "50"];
+    
+    use sids::streaming::source::SourceActor;
+    let stream_messages: Vec<StreamMessage> = numbers
+        .iter()
+        .map(|num| StreamMessage::Text(num.to_string()))
+        .collect();
+    
+    let source_actor = SourceActor::new("NumberSource".to_string(), stream_messages);
+    
+    let flow = Flow::new(
+        "DoubleFlow".to_string(),
+        |msg: StreamMessage| {
+            match msg {
+                StreamMessage::Text(text) => {
+                    if let Ok(num) = text.parse::<i32>() {
+                        StreamMessage::Text(format!("{} → {}", num, num * 2))
+                    } else {
+                        StreamMessage::Error(format!("Invalid number: {}", text))
+                    }
+                }
+                other => other,
+            }
+        },
+    );
+    
+    // Create a sink that prints the results
+    use std::sync::{Arc, Mutex};
+    let sum = Arc::new(Mutex::new(0));
+    let sum_clone = sum.clone();
+    
+    let sink = Sink::new(
+        "AggregationSink".to_string(),
+        move |msg: StreamMessage| {
+            match msg {
+                StreamMessage::Text(text) => {
+                    println!("  {}", text);
+                    // Try to extract the doubled value
+                    if let Some(arrow_pos) = text.find("→") {
+                        if let Some(num_str) = text.get(arrow_pos + 3..) {
+                            if let Ok(num) = num_str.trim().parse::<i32>() {
+                                *sum_clone.lock().unwrap() += num;
+                            }
+                        }
+                    }
+                },
+                StreamMessage::Complete => {
+                    let total = *sum_clone.lock().unwrap();
+                    println!("  --- Total sum of doubled values: {} ---", total);
+                },
+                StreamMessage::Error(err) => eprintln!("  Error: {}", err),
+                _ => {}
+            }
+        },
+    );
+    
+    // Materialize the stream
+    let mut actor_system = start_actor_system();
+    
+    let sink_id = actor_system.get_actor_count() as u32;
+    actor_system.spawn_actor(sink, Some("Sink".to_string())).await;
+    let sink_ref = actor_system.get_actor_ref(sink_id);
+    
+    let mut flow_actor = flow;
+    flow_actor.set_downstream(sink_ref.sender.clone());
+    let flow_id = actor_system.get_actor_count() as u32;
+    actor_system.spawn_actor(flow_actor, Some("Flow".to_string())).await;
+    let flow_ref = actor_system.get_actor_ref(flow_id);
+    
+    let mut source = source_actor;
+    source.set_downstream(flow_ref.sender.clone());
+    let source_id = actor_system.get_actor_count() as u32;
+    actor_system.spawn_actor(source, Some("Source".to_string())).await;
+    let source_ref = actor_system.get_actor_ref(source_id);
+    
+    source_ref.send(sids::actors::messages::Message {
+        payload: Some(StreamMessage::Text("start".to_string())),
+        stop: false,
+        responder: None,
+        blocking: None,
+    }).await;
+    
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    
+    let final_sum = *sum.lock().unwrap();
+    println!("Final aggregated sum: {}", final_sum);
+    info!("Vector aggregation example completed");
 }
 
 async fn start_sample_actor_system() {
@@ -192,6 +332,12 @@ async fn start_sample_actor_system() {
         println!();
         
         example_byte_source().await;
+        println!();
+        
+        example_vector_of_items().await;
+        println!();
+        
+        example_vector_aggregation().await;
         println!();
         
         // Optional: try HTTP example (may fail without network)
