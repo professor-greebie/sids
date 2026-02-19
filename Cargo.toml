@@ -1,13 +1,13 @@
 [package]
 name = "sids"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 authors = ["Ryan Deschamps <rdeschamps@conestogac.on.ca>"]
 repository = "https://github.com/professor-greebie/sids"
 description = "An actor-model concurrency framework providing abstraction over async and blocking actors."
 keywords = ["actor-model", "concurrency", "tokio"]
 categories = ["asynchronous", "concurrency"]
-exclude = ["/architecture", "/examples"]
+exclude = ["/architecture"]
 license = "Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
