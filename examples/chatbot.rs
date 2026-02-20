@@ -23,6 +23,8 @@ enum ChatMessage {
     StringMessage(String),
 }
 
+
+/// Alice and Bob will send messages to each other.
 struct Alice {
     partners: HashMap<String, ActorRef<ChatMessage, ResponseMessage>>,
 }
@@ -30,7 +32,7 @@ impl Alice {
     fn new() -> Self {
         Alice { partners: HashMap::new() }
     }
-    // Actor needs to be status to ensure that the actor is not moved before the message is sent.
+    // Actor needs to be static to ensure that the actor is not moved before the message is sent.
     fn add_partner<T: Actor<ChatMessage, ResponseMessage> + 'static>(&mut self, partner: T, name: String, thread_ref: &'static std::sync::atomic::AtomicUsize, message_ref: &'static std::sync::atomic::AtomicUsize) {
         let (sender, receiver) = tokio::sync::mpsc::channel::<Message<ChatMessage, ResponseMessage>>(100);
         let actor = ActorImpl::<T, ChatMessage, ResponseMessage>::new(Some(name.clone()), partner, receiver);
@@ -40,7 +42,7 @@ impl Alice {
 
 }
     
-impl Actor<ChatMessage, ResponseMessage> for Alice { 
+impl Actor<ChatMessage, ResponseMessage> for Alice {
     async fn receive(&mut self,message:Message<ChatMessage, ResponseMessage>) where Self:Sized+'static {
         match message {
             Message {payload: Some(ChatMessage::Hello { name: name_string}), stop: _, responder: _, blocking: _} => {
@@ -69,7 +71,7 @@ impl Actor<ChatMessage, ResponseMessage> for Alice {
 }
 }
     
-
+// Bob is a simple actor that only responds to messages and does not send any messages himself.
 struct Bob;
 impl Bob {
     fn new() -> Self {
@@ -94,7 +96,7 @@ impl Actor<ChatMessage, ResponseMessage> for Bob {
 
 }}
 
-
+/// implement the actor system and send some messages between Alice and Bob.
 async fn start_sample_actor_system() {
     let mut actor_system = start_actor_system::<ChatMessage, ResponseMessage>();
     let thread_ref = actor_system.get_thread_count_reference();
@@ -102,7 +104,7 @@ async fn start_sample_actor_system() {
     let bob = Bob::new();
     let mut alice = Alice::new();
     alice.add_partner(bob, "Bob".to_string(), thread_ref, message_ref);
-    let (tx, rx) = get_response_channel(&mut actor_system);
+    let (tx, rx) = get_response_channel(&actor_system);
     spawn_actor(&mut actor_system, alice, Some("Alice".to_string())).await;
     let hello = Message {
         payload: Some(ChatMessage::Hello { name: "Bob".to_string() }),
