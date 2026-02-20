@@ -68,6 +68,8 @@ impl Source<String, NotUsed> {
     /// 
     /// # Example
     /// ```no_run
+    /// use sids::streaming::source::Source;
+    /// use sids::streaming::stream_message::NotUsed;
     /// let items = vec!["one".to_string(), "two".to_string(), "three".to_string()];
     /// let source = Source::from_items(items);
     /// ```
@@ -83,6 +85,8 @@ impl Source<String, NotUsed> {
     /// 
     /// # Example
     /// ```no_run
+    /// use sids::streaming::source::Source;
+    /// use sids::streaming::stream_message::NotUsed;
     /// let source = Source::new("hello".to_string(), NotUsed);
     /// let mapped = source.map(|text| text.to_uppercase());
     /// ```

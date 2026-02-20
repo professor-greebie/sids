@@ -1,6 +1,6 @@
 use super::messages::Message;
 use log::info;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, broadcast};
 
 
 /// The main actor trait that all actors must implement.
@@ -12,22 +12,70 @@ pub trait Actor<MType, Response>{
 
 /// Helper function for running an actor.
 pub (super) async fn run_an_actor<MType, Response, T: Actor<MType, Response> + 'static>(mut actor : ActorImpl <T, MType, Response>) {
-    while let Some(message) = actor.receiver.recv().await {
-        if message.stop {
-            break;
+    if let Some(mut shutdown_rx) = actor.shutdown_rx.take() {
+        // Actor has shutdown signal
+        loop {
+            tokio::select! {
+                Some(message) = actor.receiver.recv() => {
+                    if message.stop {
+                        info!(actor=actor.name.clone().unwrap_or("Unnamed Actor".to_string()).as_str(); "Actor {} received stop message", actor.name.clone().unwrap_or("Unnamed Actor".to_string()));
+                        break;
+                    }
+                    actor.receive(message).await;
+                }
+                _ = shutdown_rx.recv() => {
+                    info!(actor=actor.name.clone().unwrap_or("Unnamed Actor".to_string()).as_str(); "Actor {} received shutdown signal", actor.name.clone().unwrap_or("Unnamed Actor".to_string()));
+                    break;
+                }
+            }
         }
-        actor.receive(message).await;
+    } else {
+        // No shutdown signal, use original loop
+        while let Some(message) = actor.receiver.recv().await {
+            if message.stop {
+                info!(actor=actor.name.clone().unwrap_or("Unnamed Actor".to_string()).as_str(); "Actor {} received stop message", actor.name.clone().unwrap_or("Unnamed Actor".to_string()));
+                break;
+            }
+            actor.receive(message).await;
+        }
     }
-
 }
 
 /// Helper function for running a blocking actor.
 pub (super) async fn run_a_blocking_actor<MType, Response, T: Actor<MType, Response> + 'static>(mut actor: BlockingActorImpl<T, MType, Response>) {
-    while let Ok(message) = actor.receiver.recv() {
-        if message.stop {
-            break;
+    if let Some(shutdown_rx) = actor.shutdown_rx.take() {
+        // Actor has shutdown signal
+        loop {
+            // For blocking actors, we need to check for messages in the blocking receiver
+            // Since we can't use tokio::select! with std::sync::mpsc directly, we'll check both conditions
+            match actor.receiver.recv_timeout(std::time::Duration::from_millis(100)) {
+                Ok(message) => {
+                    if message.stop {
+                        break;
+                    }
+                    actor.receive(message).await;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    break;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    // Check if shutdown signal was sent
+                    if shutdown_rx.is_closed() {
+                        info!(actor=actor.name.clone().unwrap_or("Unnamed Blocking Actor".to_string()).as_str(); "Blocking actor {} received shutdown signal", actor.name.clone().unwrap_or("Unnamed Blocking Actor".to_string()));
+                        break;
+                    }
+                }
+            }
         }
-        actor.receive(message).await;
+    } else {
+        // No shutdown signal, use original loop
+        while let Ok(message) = actor.receiver.recv() {
+            if message.stop {
+                info!(actor=actor.name.clone().unwrap_or("Unnamed Blocking Actor".to_string()).as_str(); "Blocking actor {} received stop message", actor.name.clone().unwrap_or("Unnamed Blocking Actor".to_string()));
+                break;
+            }
+            actor.receive(message).await;
+        }
     }
 }
 
@@ -39,16 +87,17 @@ pub struct ActorImpl<T, MType, Response> {
     name: Option<String>,
     actor: T,
     receiver: mpsc::Receiver<Message<MType, Response>>,
+    shutdown_rx: Option<broadcast::Receiver<()>>,
 }
 
 impl <MType, Response, T: Actor<MType, Response> + 'static> ActorImpl <T, MType, Response> {
     pub async fn receive(&mut self, message: Message<MType, Response>){
-        info!("Actor {} received message", self.name.clone().unwrap_or("Unnamed Actor".to_string()));
+        info!(actor=self.name.clone().unwrap_or("Unnamed Actor".to_string()).as_str(); "Actor {} received message", self.name.clone().unwrap_or("Unnamed Actor".to_string()));
         T::receive(&mut self.actor, message).await;
     }
-    pub fn new (name: Option<String>, actor: T, receiver: mpsc::Receiver::<Message<MType, Response>>) -> Self {
+    pub fn new (name: Option<String>, actor: T, receiver: mpsc::Receiver::<Message<MType, Response>>, shutdown_rx: Option<broadcast::Receiver<()>>) -> Self {
 
-        ActorImpl {name, actor, receiver }
+        ActorImpl {name, actor, receiver, shutdown_rx }
     }
 }
 
@@ -59,17 +108,18 @@ pub struct BlockingActorImpl<T, MType, Response> {
     name: Option<String>,
     actor: T,
     receiver: std::sync::mpsc::Receiver<Message<MType, Response>>,
+    shutdown_rx: Option<broadcast::Receiver<()>>,
 }
 
 impl <MType, Response, T: Actor<MType, Response> + 'static> BlockingActorImpl<T, MType, Response> {
 
      pub async fn receive(&mut self, message: Message<MType, Response>){ 
-        info!("Blocking actor {} received message", self.name.clone().unwrap_or("Unnamed Blocking Actor".to_string()));
+        info!(actor=self.name.clone().unwrap_or("Unnamed Blocking Actor".to_string()).as_str(); "Blocking actor {} received message", self.name.clone().unwrap_or("Unnamed Blocking Actor".to_string()));
         T::receive(&mut self.actor, message).await;
     }
 
-    pub fn new (name: Option<String>, actor: T, receiver: std::sync::mpsc::Receiver<Message<MType, Response>>) -> BlockingActorImpl<T, MType, Response> {
-        BlockingActorImpl { name, actor, receiver}
+    pub fn new (name: Option<String>, actor: T, receiver: std::sync::mpsc::Receiver<Message<MType, Response>>, shutdown_rx: Option<broadcast::Receiver<()>>) -> BlockingActorImpl<T, MType, Response> {
+        BlockingActorImpl { name, actor, receiver, shutdown_rx}
     }
 }
 
@@ -128,7 +178,7 @@ mod tests {
     async fn test_actor_impl_creation() {
         let (_tx, rx) = mpsc::channel::<Message<TestPayload, ResponseMessage>>(1);
         let actor = EchoActor;
-        let actor_impl = ActorImpl::new(Some("TestActor".to_string()), actor, rx);
+        let actor_impl = ActorImpl::new(Some("TestActor".to_string()), actor, rx, None);
         
         assert!(actor_impl.name.is_some());
         assert_eq!(actor_impl.name.unwrap(), "TestActor");
@@ -138,7 +188,7 @@ mod tests {
     async fn test_actor_impl_creation_without_name() {
         let (_tx, rx) = mpsc::channel::<Message<TestPayload, ResponseMessage>>(1);
         let actor = EchoActor;
-        let actor_impl = ActorImpl::new(None, actor, rx);
+        let actor_impl = ActorImpl::new(None, actor, rx, None);
         
         assert!(actor_impl.name.is_none());
     }
@@ -147,7 +197,7 @@ mod tests {
     async fn test_actor_impl_receive() {
         let (_tx, rx) = mpsc::channel::<Message<TestPayload, ResponseMessage>>(1);
         let actor = EchoActor;
-        let mut actor_impl = ActorImpl::new(Some("EchoActor".to_string()), actor, rx);
+        let mut actor_impl = ActorImpl::new(Some("EchoActor".to_string()), actor, rx, None);
         
         let (responder_tx, responder_rx) = tokio::sync::oneshot::channel();
         let payload = TestPayload { _value: "test".to_string() };
@@ -171,7 +221,7 @@ mod tests {
         
         let (_tx, rx) = mpsc::channel::<Message<CounterPayload, ResponseMessage>>(10);
         let actor = CounterActor { count: count_clone };
-        let mut actor_impl = ActorImpl::new(Some("CounterActor".to_string()), actor, rx);
+        let mut actor_impl = ActorImpl::new(Some("CounterActor".to_string()), actor, rx, None);
         
         // Send multiple messages
         for i in 1..=5 {
@@ -196,7 +246,7 @@ mod tests {
         let count_clone = count.clone();
         
         let actor = CounterActor { count: count_clone };
-        let actor_impl = ActorImpl::new(Some("CounterActor".to_string()), actor, rx);
+        let actor_impl = ActorImpl::new(Some("CounterActor".to_string()), actor, rx, None);
         
         // Spawn the actor in a background task
         let actor_task = tokio::spawn(async move {
@@ -242,7 +292,7 @@ mod tests {
     fn test_blocking_actor_impl_creation() {
         let (_tx, rx) = std::sync::mpsc::channel::<Message<TestPayload, ResponseMessage>>();
         let actor = BlockingEchoActor;
-        let actor_impl = BlockingActorImpl::new(Some("BlockingTest".to_string()), actor, rx);
+        let actor_impl = BlockingActorImpl::new(Some("BlockingTest".to_string()), actor, rx, None);
         
         assert!(actor_impl.name.is_some());
         assert_eq!(actor_impl.name.unwrap(), "BlockingTest");
@@ -252,7 +302,7 @@ mod tests {
     fn test_blocking_actor_impl_creation_without_name() {
         let (_tx, rx) = std::sync::mpsc::channel::<Message<TestPayload, ResponseMessage>>();
         let actor = BlockingEchoActor;
-        let actor_impl = BlockingActorImpl::new(None, actor, rx);
+        let actor_impl = BlockingActorImpl::new(None, actor, rx, None);
         
         assert!(actor_impl.name.is_none());
     }
@@ -261,7 +311,7 @@ mod tests {
     async fn test_blocking_actor_receive() {
         let (_tx, rx) = std::sync::mpsc::channel::<Message<TestPayload, ResponseMessage>>();
         let actor = BlockingEchoActor;
-        let mut actor_impl = BlockingActorImpl::new(Some("BlockingEcho".to_string()), actor, rx);
+        let mut actor_impl = BlockingActorImpl::new(Some("BlockingEcho".to_string()), actor, rx, None);
         
         let (blocking_tx, blocking_rx) = std::sync::mpsc::sync_channel(1);
         let payload = TestPayload { _value: "test".to_string() };
@@ -285,7 +335,7 @@ mod tests {
         let count_clone = count.clone();
         
         let actor = CounterActor { count: count_clone };
-        let actor_impl = ActorImpl::new(Some("CounterActor".to_string()), actor, rx);
+        let actor_impl = ActorImpl::new(Some("CounterActor".to_string()), actor, rx, None);
         
         // Spawn the actor
         let actor_task = tokio::spawn(async move {
@@ -326,7 +376,7 @@ mod tests {
     async fn test_actor_stops_on_stop_message() {
         let (tx, rx) = mpsc::channel::<Message<TestPayload, ResponseMessage>>(10);
         let actor = EchoActor;
-        let actor_impl = ActorImpl::new(Some("EchoActor".to_string()), actor, rx);
+        let actor_impl = ActorImpl::new(Some("EchoActor".to_string()), actor, rx, None);
         
         let actor_task = tokio::spawn(async move {
             run_an_actor(actor_impl).await;
@@ -354,7 +404,7 @@ mod tests {
     fn test_blocking_actor_stops_on_stop_message() {
         let (tx, rx) = std::sync::mpsc::channel::<Message<TestPayload, ResponseMessage>>();
         let actor = BlockingEchoActor;
-        let actor_impl = BlockingActorImpl::new(Some("BlockingEcho".to_string()), actor, rx);
+        let actor_impl = BlockingActorImpl::new(Some("BlockingEcho".to_string()), actor, rx, None);
         
         // Spawn blocking actor in a thread
         let handle = std::thread::spawn(move || {
