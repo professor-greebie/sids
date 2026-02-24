@@ -1,6 +1,7 @@
-use std::{collections::HashMap, sync::atomic::AtomicUsize};
+use std::{collections::HashMap, sync::atomic::AtomicUsize, time::Duration};
 
 use crate::actors::actor::{ActorImpl, BlockingActorImpl};
+use crate::config::SidsConfig;
 
 use super::{
     actor::Actor,
@@ -10,6 +11,10 @@ use super::{
 };
 use log::{info, warn};
 use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::time::timeout;
+
+#[cfg(feature = "visualize")]
+use crate::supervision::{ActorMetrics, SupervisionData, SupervisionSummary};
 
 // Actor name constants for logging
 const GUARDIAN_ACTOR_NAME: &str = "GUARDIAN";
@@ -85,6 +90,10 @@ pub struct ActorSystem<MType: Send + Clone + 'static, Response: Send + Clone + '
     total_threads: &'static AtomicUsize,
     snd: mpsc::Sender<Message<MType, ResponseMessage>>,
     shutdown_tx: broadcast::Sender<()>,
+    actor_buffer_size: usize,
+    shutdown_timeout_ms: Option<u64>,
+    #[cfg(feature = "visualize")]
+    supervision: SupervisionData,
 }
 
 impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFactory<MType, Response> for ActorSystem<MType, Response> {
@@ -94,7 +103,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFac
         tokio::sync::mpsc::Sender<Message<MType, Response>>,
         tokio::sync::mpsc::Receiver<Message<MType, Response>>,
     ) {
-        mpsc::channel::<Message<MType, Response>>(super::SIDS_DEFAULT_BUFFER_SIZE)
+        mpsc::channel::<Message<MType, Response>>(self.actor_buffer_size)
     }
 
     fn create_blocking_actor_channel(
@@ -131,7 +140,13 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
     /// The ActorSystem will start by launching a guardian, which is a non-blocking officer-actor that manages all other actors in the system.
     /// The guardian will be dormant until start_system is called in the ActorSystem.
     pub(super) fn new() -> Self {
-        let (tx, rx) = mpsc::channel::<Message<MType, ResponseMessage>>(super::SIDS_DEFAULT_BUFFER_SIZE);
+        Self::new_with_config(SidsConfig::default())
+    }
+
+    pub(super) fn new_with_config(config: SidsConfig) -> Self {
+        let actor_buffer_size = config.actor_system.actor_buffer_size;
+        let shutdown_timeout_ms = config.actor_system.shutdown_timeout_ms;
+        let (tx, rx) = mpsc::channel::<Message<MType, ResponseMessage>>(actor_buffer_size);
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
         info!(actor = "GUARDIAN"; "Guardian channel and actor created. Launching...");
         info!(actor = "GUARDIAN"; "Guardian actor spawned");
@@ -150,6 +165,10 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
             total_threads: &THREAD_MONITOR,
             snd: tx,
             shutdown_tx,
+            actor_buffer_size,
+            shutdown_timeout_ms,
+            #[cfg(feature = "visualize")]
+            supervision: SupervisionData::new(),
         }
     }
 
@@ -160,10 +179,16 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         info!(actor=ACTOR_SYSTEM_NAME;"Spawning actor within the actor system.");
         let (snd, rec) = self.create_actor_channel();
         let shutdown_rx = self.shutdown_tx.subscribe();
-        let actor_impl = ActorImpl::new(name, actor, rec, Some(shutdown_rx));
+        let actor_impl = ActorImpl::new(name.clone(), actor, rec, Some(shutdown_rx));
         let actor_ref = ActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
         let actor_id = self.actors.len() as u32;
         self.actors.insert(actor_id, actor_ref);
+        
+        #[cfg(feature = "visualize")]
+        {
+            self.record_actor_spawn(actor_id, name.unwrap_or_else(|| format!("Actor<{}>", actor_id)));
+        }
+        
         info!(actor=ACTOR_SYSTEM_NAME; "Actor spawned successfully with id: {}", actor_id);
     }
 
@@ -174,10 +199,16 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         info!(actor=ACTOR_SYSTEM_NAME; "Spawning blocking actor within the actor system.");
         let (snd, rec) = self.create_blocking_actor_channel();
         let shutdown_rx = self.shutdown_tx.subscribe();
-        let actor_impl = BlockingActorImpl::new(name, actor, rec, Some(shutdown_rx));
+        let actor_impl = BlockingActorImpl::new(name.clone(), actor, rec, Some(shutdown_rx));
         let actor_ref = BlockingActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
         let actor_id = self.blocking_actors.len() as u32;
         self.blocking_actors.insert(actor_id, actor_ref);
+        
+        #[cfg(feature = "visualize")]
+        {
+            self.record_actor_spawn(actor_id, name.unwrap_or_else(|| format!("BlockingActor<{}>", actor_id)));
+        }
+        
         info!(actor=ACTOR_SYSTEM_NAME; "Blocking actor spawned successfully with id: {}", actor_id);
     }
 
@@ -194,6 +225,11 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
                 .get_mut(&actor_id)
                 .expect("Failed to get blocking actor");
             blocking_actor.send(message);
+            
+            #[cfg(feature = "visualize")]
+            {
+                self.record_message_processed(actor_id);
+            }
         } else if let Message {
             payload: _,
             stop: _,
@@ -203,6 +239,11 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         {
             let actor = self.actors.get_mut(&actor_id).expect("Failed to get actor");
             actor.send(message).await;
+            
+            #[cfg(feature = "visualize")]
+            {
+                self.record_message_processed(actor_id);
+            }
         } else {
             warn!("No actor found with id: {}", actor_id);
         }
@@ -234,11 +275,22 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
             .await
             .map_err(|e| format!("Failed to send shutdown message: {}", e))?;
         
-        rx.await
-            .map(|_| {
-                info!("Guardian confirmed shutdown");
-            })
-            .map_err(|e| format!("Guardian failed to respond: {}", e))
+        if let Some(timeout_ms) = self.shutdown_timeout_ms {
+            match timeout(Duration::from_millis(timeout_ms), rx).await {
+                Ok(result) => result
+                    .map(|_| {
+                        info!("Guardian confirmed shutdown");
+                    })
+                    .map_err(|e| format!("Guardian failed to respond: {}", e)),
+                Err(_) => Err(format!("Guardian shutdown timed out after {} ms", timeout_ms)),
+            }
+        } else {
+            rx.await
+                .map(|_| {
+                    info!("Guardian confirmed shutdown");
+                })
+                .map_err(|e| format!("Guardian failed to respond: {}", e))
+        }
     }
 
     /// Get a receiver for the shutdown broadcast signal.
@@ -278,13 +330,46 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
     pub fn get_message_count(&self) -> usize {
         self.total_messages.load(std::sync::atomic::Ordering::Relaxed)
     }
+
+    #[cfg(feature = "visualize")]
+    pub fn record_actor_spawn(&mut self, actor_id: u32, actor_type: String) {
+        let actor_id_str = format!("actor-{}", actor_id);
+        let actor_metrics = ActorMetrics::new(actor_id_str, actor_type);
+        self.supervision.actors.insert(format!("actor-{}", actor_id), actor_metrics);
+    }
+
+    #[cfg(feature = "visualize")]
+    pub fn record_message_processed(&mut self, actor_id: u32) {
+        self.supervision.record_message_processed(&format!("actor-{}", actor_id));
+    }
+
+    #[cfg(feature = "visualize")]
+    pub fn record_message_sent(&mut self, from_id: u32, to_id: u32) {
+        let from = format!("actor-{}", from_id);
+        let to = format!("actor-{}", to_id);
+        if let Some(actor) = self.supervision.actors.get_mut(&from) {
+            actor.record_message_sent(to);
+        }
+    }
+
+    #[cfg(feature = "visualize")]
+    pub fn get_supervision_data(&self) -> SupervisionData {
+        self.supervision.clone()
+    }
+
+    #[cfg(feature = "visualize")]
+    pub fn get_supervision_summary(&self) -> SupervisionSummary {
+        self.supervision.summary()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::actors::messages::ResponseMessage;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+    use tokio::time::{timeout, Duration};
 
     // Test payload types
     #[derive(Clone)]
@@ -330,6 +415,29 @@ mod tests {
             if let Some(blocking) = message.blocking {
                 let _ = blocking.send(ResponseMessage::Success);
             }
+        }
+    }
+
+    struct CountingActor {
+        counter: Arc<AtomicUsize>,
+    }
+
+    impl Actor<StringPayload, ResponseMessage> for CountingActor {
+        async fn receive(&mut self, message: Message<StringPayload, ResponseMessage>) {
+            if message.payload.is_some() {
+                self.counter.fetch_add(1, Ordering::SeqCst);
+                if let Some(responder) = message.responder {
+                    let _ = responder.send(ResponseMessage::Success);
+                }
+            }
+        }
+    }
+
+    struct SilentActor;
+
+    impl Actor<StringPayload, ResponseMessage> for SilentActor {
+        async fn receive(&mut self, _message: Message<StringPayload, ResponseMessage>) {
+            // Simulate a failure to respond without panicking the runtime.
         }
     }
 
@@ -633,6 +741,106 @@ mod tests {
         
         assert!(result1.is_ok(), "First receiver should get shutdown signal");
         assert!(result2.is_ok(), "Second receiver should get shutdown signal");
+    }
+
+    #[tokio::test]
+    async fn test_actor_stop_prevents_future_messages() {
+        let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let actor = CountingActor {
+            counter: counter.clone(),
+        };
+
+        actor_system.spawn_actor(actor, Some("CountingActor".to_string())).await;
+
+        let (tx, rx) = actor_system.create_response_channel();
+        let message = Message {
+            payload: Some(StringPayload {
+                _content: "first".to_string(),
+            }),
+            stop: false,
+            responder: Some(tx),
+            blocking: None,
+        };
+        actor_system.send_message_to_actor(0, message).await;
+        let response = rx.await.expect("Failed to receive response");
+        assert_eq!(response, ResponseMessage::Success);
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+
+        let stop_message = Message {
+            payload: None,
+            stop: true,
+            responder: None,
+            blocking: None,
+        };
+        actor_system.send_message_to_actor(0, stop_message).await;
+        tokio::time::sleep(Duration::from_millis(25)).await;
+
+        let (tx2, rx2) = actor_system.create_response_channel();
+        let message_after_stop = Message {
+            payload: Some(StringPayload {
+                _content: "after".to_string(),
+            }),
+            stop: false,
+            responder: Some(tx2),
+            blocking: None,
+        };
+        actor_system.send_message_to_actor(0, message_after_stop).await;
+
+        let result = timeout(Duration::from_millis(50), rx2).await;
+        match result {
+            Err(_) => {}
+            Ok(Err(_)) => {}
+            Ok(Ok(_)) => panic!("Actor should not respond after stop"),
+        }
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_actor_panic_does_not_break_other_actors() {
+        let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
+
+        actor_system
+            .spawn_actor(SilentActor, Some("SilentActor".to_string()))
+            .await;
+        actor_system
+            .spawn_actor(EchoActor, Some("EchoActor".to_string()))
+            .await;
+
+        let (tx, rx) = actor_system.create_response_channel();
+        let panic_message = Message {
+            payload: Some(StringPayload {
+                _content: "boom".to_string(),
+            }),
+            stop: false,
+            responder: Some(tx),
+            blocking: None,
+        };
+        actor_system.send_message_to_actor(0, panic_message).await;
+
+        let silent_result = timeout(Duration::from_millis(50), rx).await;
+        match silent_result {
+            Err(_) => {}
+            Ok(Err(_)) => {}
+            Ok(Ok(_)) => panic!("Silent actor should not respond"),
+        }
+
+        let (tx2, rx2) = actor_system.create_response_channel();
+        let echo_message = Message {
+            payload: Some(StringPayload {
+                _content: "ok".to_string(),
+            }),
+            stop: false,
+            responder: Some(tx2),
+            blocking: None,
+        };
+        actor_system.send_message_to_actor(1, echo_message).await;
+
+        let echo_response = timeout(Duration::from_millis(50), rx2)
+            .await
+            .expect("Echo actor should respond")
+            .expect("Response channel should be open");
+        assert_eq!(echo_response, ResponseMessage::Success);
     }
 }
 
