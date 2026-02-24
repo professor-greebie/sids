@@ -1,5 +1,9 @@
-pub mod actors;
 pub mod config;
+#[cfg(feature = "visualize")]
+pub mod supervision;
+#[cfg(feature = "visualize")]
+pub mod supervision_export;
+pub mod actors;
 #[cfg(feature = "streaming")]
 pub mod streaming;
 #[cfg(test)]

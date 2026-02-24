@@ -254,7 +254,6 @@ mod tests {
         
         // Verify we got a valid atomic reference
         let _count = count_ref.load(std::sync::atomic::Ordering::SeqCst);
-        assert!(true);
     }
 
     #[tokio::test]
@@ -266,7 +265,6 @@ mod tests {
         // Verify we got a valid atomic reference (value may vary due to system initialization)
         let _count = thread_ref.load(std::sync::atomic::Ordering::SeqCst);
         // Just verify we can read it without panicking
-        assert!(true);
     }
 
     #[tokio::test]

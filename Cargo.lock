@@ -1153,6 +1153,7 @@ dependencies = [
  "mockall",
  "reqwest",
  "serde",
+ "serde_json",
  "tokio",
  "toml",
  "trait-variant",

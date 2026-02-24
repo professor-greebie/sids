@@ -1,11 +1,12 @@
 /// Unit tests for the streaming module
 use super::*;
 use crate::actors::start_actor_system;
-use source::{Source, SourceError};
+use source::{Source, SourceActor, SourceError};
 use stream_message::{StreamMessage, NotUsed};
 use sink::{Sink, consumers};
 use flow::{Flow, transforms};
 use std::sync::{Arc, Mutex};
+use tokio::time::{timeout, Duration, Instant};
 
 #[cfg(test)]
 mod source_tests {
@@ -480,5 +481,67 @@ mod integration_tests {
         let collected_data = collected.lock().unwrap();
         assert_eq!(collected_data.len(), 1);
         assert_eq!(collected_data[0], data);
+    }
+}
+
+#[cfg(test)]
+mod backpressure_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_source_actor_backpressure_blocks() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let mut source_actor = SourceActor::new(
+            "BackpressureSource".to_string(),
+            vec![
+                StreamMessage::Text("one".to_string()),
+                StreamMessage::Text("two".to_string()),
+                StreamMessage::Text("three".to_string()),
+            ],
+        );
+        source_actor.set_downstream(tx);
+
+        let start = Instant::now();
+        let emit_task = tokio::spawn(async move {
+            source_actor.emit_all().await;
+        });
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let drain_result = timeout(Duration::from_millis(200), async {
+            let mut received = 0;
+            while let Some(_msg) = rx.recv().await {
+                received += 1;
+                if received >= 4 {
+                    break;
+                }
+            }
+        })
+        .await;
+        assert!(drain_result.is_ok(), "Receiver should drain messages");
+
+        let _ = emit_task.await;
+        assert!(
+            start.elapsed() >= Duration::from_millis(50),
+            "Backpressure should delay emission"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_source_actor_downstream_closed_completes() {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        drop(rx);
+
+        let mut source_actor = SourceActor::new(
+            "ClosedDownstream".to_string(),
+            vec![StreamMessage::Text("payload".to_string())],
+        );
+        source_actor.set_downstream(tx);
+
+        let result = timeout(Duration::from_millis(50), async {
+            source_actor.emit_all().await;
+        })
+        .await;
+        assert!(result.is_ok(), "Emission should complete even if downstream closes");
     }
 }

@@ -553,6 +553,13 @@ impl Source<Vec<u8>, NotUsed> {
         materializer.add_flow(flow_ref);
         materializer.set_sink(sink_ref);
         
+        // Record message flow for visualization
+        #[cfg(feature = "visualize")]
+        {
+            actor_system.record_message_sent(source_id, flow_id);
+            actor_system.record_message_sent(flow_id, sink_id);
+        }
+        
         // Trigger emission
         source_ref.send(Message {
             payload: Some(StreamMessage::Text("start".to_string())),
@@ -666,6 +673,13 @@ impl Source<String, NotUsed> {
         materializer.set_source(source_ref.clone());
         materializer.add_flow(flow_ref);
         materializer.set_sink(sink_ref);
+        
+        // Record message flow for visualization
+        #[cfg(feature = "visualize")]
+        {
+            actor_system.record_message_sent(source_id, flow_id);
+            actor_system.record_message_sent(flow_id, sink_id);
+        }
         
         // Trigger emission
         source_ref.send(Message {

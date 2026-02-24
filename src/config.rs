@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 
 pub const DEFAULT_ACTOR_BUFFER_SIZE: usize = 100;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct SidsConfig {
     #[serde(default)]
     pub actor_system: ActorSystemConfig,
@@ -15,14 +15,6 @@ pub struct ActorSystemConfig {
     pub actor_buffer_size: usize,
     #[serde(default)]
     pub shutdown_timeout_ms: Option<u64>,
-}
-
-impl Default for SidsConfig {
-    fn default() -> Self {
-        Self {
-            actor_system: ActorSystemConfig::default(),
-        }
-    }
 }
 
 impl Default for ActorSystemConfig {

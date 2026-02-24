@@ -35,7 +35,6 @@ const BLOCKING_ACTOR_NAME: &str = "Blocking Actor";
 ///      println!("Received message: {:?}", message.payload);
 ///  }
 /// }
-/// #[tokio::main]
 /// async fn main() {
 /// static THREAD_MONITOR: AtomicUsize = AtomicUsize::new(0);
 /// static SEND_MONITOR: AtomicUsize = AtomicUsize::new(0);
@@ -49,7 +48,6 @@ const BLOCKING_ACTOR_NAME: &str = "Blocking Actor";
 /// (message).await;
 /// }
 /// ```
-
 pub struct ActorRef<MType, Response>
 where
     MType: Send + 'static,
