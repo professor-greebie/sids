@@ -8,13 +8,18 @@ pub mod messages;
 use actor::Actor;
 use actor_ref::ActorRef;
 use actor_system::ActorSystem;
+use crate::config::{SidsConfig, DEFAULT_ACTOR_BUFFER_SIZE};
 use channel_factory::ChannelFactory;
 use messages::Message;
 
-static SIDS_DEFAULT_BUFFER_SIZE: usize = 100;
+pub const SIDS_DEFAULT_BUFFER_SIZE: usize = DEFAULT_ACTOR_BUFFER_SIZE;
 
 pub fn start_actor_system<MType: Send + Clone + 'static, Response: Send + Clone + 'static>() -> ActorSystem<MType, Response> {
     ActorSystem::<MType, Response>::new()
+}
+
+pub fn start_actor_system_with_config<MType: Send + Clone + 'static, Response: Send + Clone + 'static>(config: SidsConfig) -> ActorSystem<MType, Response> {
+    ActorSystem::<MType, Response>::new_with_config(config)
 }
 
 pub async fn spawn_actor<MType: Send + Clone + 'static, Response: Send + Clone + 'static, T>(actor_system: &mut ActorSystem<MType, Response>, actor: T, name: Option<String>) where T: Actor<MType, Response> + 'static {  

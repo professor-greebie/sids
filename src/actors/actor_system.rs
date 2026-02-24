@@ -1,6 +1,7 @@
-use std::{collections::HashMap, sync::atomic::AtomicUsize};
+use std::{collections::HashMap, sync::atomic::AtomicUsize, time::Duration};
 
 use crate::actors::actor::{ActorImpl, BlockingActorImpl};
+use crate::config::SidsConfig;
 
 use super::{
     actor::Actor,
@@ -10,6 +11,7 @@ use super::{
 };
 use log::{info, warn};
 use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::time::timeout;
 
 // Actor name constants for logging
 const GUARDIAN_ACTOR_NAME: &str = "GUARDIAN";
@@ -85,6 +87,8 @@ pub struct ActorSystem<MType: Send + Clone + 'static, Response: Send + Clone + '
     total_threads: &'static AtomicUsize,
     snd: mpsc::Sender<Message<MType, ResponseMessage>>,
     shutdown_tx: broadcast::Sender<()>,
+    actor_buffer_size: usize,
+    shutdown_timeout_ms: Option<u64>,
 }
 
 impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFactory<MType, Response> for ActorSystem<MType, Response> {
@@ -94,7 +98,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFac
         tokio::sync::mpsc::Sender<Message<MType, Response>>,
         tokio::sync::mpsc::Receiver<Message<MType, Response>>,
     ) {
-        mpsc::channel::<Message<MType, Response>>(super::SIDS_DEFAULT_BUFFER_SIZE)
+        mpsc::channel::<Message<MType, Response>>(self.actor_buffer_size)
     }
 
     fn create_blocking_actor_channel(
@@ -131,7 +135,13 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
     /// The ActorSystem will start by launching a guardian, which is a non-blocking officer-actor that manages all other actors in the system.
     /// The guardian will be dormant until start_system is called in the ActorSystem.
     pub(super) fn new() -> Self {
-        let (tx, rx) = mpsc::channel::<Message<MType, ResponseMessage>>(super::SIDS_DEFAULT_BUFFER_SIZE);
+        Self::new_with_config(SidsConfig::default())
+    }
+
+    pub(super) fn new_with_config(config: SidsConfig) -> Self {
+        let actor_buffer_size = config.actor_system.actor_buffer_size;
+        let shutdown_timeout_ms = config.actor_system.shutdown_timeout_ms;
+        let (tx, rx) = mpsc::channel::<Message<MType, ResponseMessage>>(actor_buffer_size);
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
         info!(actor = "GUARDIAN"; "Guardian channel and actor created. Launching...");
         info!(actor = "GUARDIAN"; "Guardian actor spawned");
@@ -150,6 +160,8 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
             total_threads: &THREAD_MONITOR,
             snd: tx,
             shutdown_tx,
+            actor_buffer_size,
+            shutdown_timeout_ms,
         }
     }
 
@@ -234,11 +246,22 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
             .await
             .map_err(|e| format!("Failed to send shutdown message: {}", e))?;
         
-        rx.await
-            .map(|_| {
-                info!("Guardian confirmed shutdown");
-            })
-            .map_err(|e| format!("Guardian failed to respond: {}", e))
+        if let Some(timeout_ms) = self.shutdown_timeout_ms {
+            match timeout(Duration::from_millis(timeout_ms), rx).await {
+                Ok(result) => result
+                    .map(|_| {
+                        info!("Guardian confirmed shutdown");
+                    })
+                    .map_err(|e| format!("Guardian failed to respond: {}", e)),
+                Err(_) => Err(format!("Guardian shutdown timed out after {} ms", timeout_ms)),
+            }
+        } else {
+            rx.await
+                .map(|_| {
+                    info!("Guardian confirmed shutdown");
+                })
+                .map_err(|e| format!("Guardian failed to respond: {}", e))
+        }
     }
 
     /// Get a receiver for the shutdown broadcast signal.

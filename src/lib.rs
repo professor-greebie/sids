@@ -1,4 +1,5 @@
 pub mod actors;
+pub mod config;
 #[cfg(feature = "streaming")]
 pub mod streaming;
 #[cfg(test)]

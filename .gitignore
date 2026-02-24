@@ -15,3 +15,6 @@ package-lock.json
 
 # Cargo lock file (not needed for libraries)
 Cargo.lock
+
+# Local configuration (do not commit)
+sids.config.toml

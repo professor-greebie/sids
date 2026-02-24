@@ -1,0 +1,9 @@
+# Copy this file to sids.config.toml and edit as needed.
+# Keep sids.config.toml out of git to avoid leaking sensitive values.
+
+[actor_system]
+# The default buffer size for actor message channels.
+actor_buffer_size = 100
+
+# Optional shutdown timeout in milliseconds.
+shutdown_timeout_ms = 5000

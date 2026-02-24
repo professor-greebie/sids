@@ -3,6 +3,7 @@ use log::info;
 use std::io::Error;
 
 pub mod actors;
+pub mod config;
 
 fn init_logger() {
     let env = Env::default()

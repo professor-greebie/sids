@@ -197,6 +197,32 @@ cargo test --features streaming --lib actors::actor::tests
 cargo test --features streaming --lib actors::actor_system::tests
 ```
 
+## Configuration
+
+This library can be configured using a TOML file. Keep your real config out of git and copy the example:
+
+```bash
+copy sids.config.example.toml sids.config.toml
+```
+
+Example snippet:
+
+```toml
+[actor_system]
+actor_buffer_size = 100
+shutdown_timeout_ms = 5000
+```
+
+Usage in code:
+
+```rust
+use sids::config::SidsConfig;
+
+let config = SidsConfig::load_from_file("sids.config.toml")
+    .expect("Failed to load config");
+let mut actor_system = sids::actors::start_actor_system_with_config(config);
+```
+
 ### Code Coverage
 
 The project uses `cargo-llvm-cov` for code coverage analysis, configured to comply with institutional file system constraints.
