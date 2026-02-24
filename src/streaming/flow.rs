@@ -70,11 +70,11 @@ where
 {
     async fn receive(&mut self, message: Message<StreamMessage, StreamMessage>) {
         if let Some(payload) = message.payload {
-            info!("Flow '{}' received message", self.name);
+            info!(actor=self.name.clone().as_str(); "Flow '{}' received message", self.name);
 
             // Check if this is a terminal message
             if payload.is_terminal() {
-                info!("Flow '{}' received terminal message, forwarding downstream", self.name);
+                info!(actor=self.name.clone().as_str(); "Flow '{}' received terminal message, forwarding downstream", self.name);
                 if let Some(downstream) = &self.downstream {
                     let _ = downstream.send(Message {
                         payload: Some(payload),
@@ -88,7 +88,7 @@ where
 
             // Apply transformation
             let transformed = (self.transform)(payload);
-            info!("Flow '{}' transformed data", self.name);
+            info!(actor=self.name.clone().as_str(); "Flow '{}' transformed data", self.name);
 
             // Send transformed data downstream
             if let Some(downstream) = &self.downstream {

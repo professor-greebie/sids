@@ -41,14 +41,14 @@ where
     async fn receive(&mut self, message: Message<StreamMessage, StreamMessage>) {
         if let Some(payload) = message.payload {
             *self.messages_received.lock().unwrap() += 1;
-            info!("Sink '{}' received message #{}", self.name, self.messages_received());
+            info!(actor=self.name.clone().as_str(); "Sink '{}' received message #{}", self.name, self.messages_received());
 
             // Consume the data
             (self.consumer)(payload.clone());
 
             // If terminal message, log completion
             if payload.is_terminal() {
-                info!("Sink '{}' received terminal message, processing complete", self.name);
+                info!(actor=self.name.clone().as_str(); "Sink '{}' received terminal message, processing complete", self.name);
             }
         }
     }

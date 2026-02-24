@@ -9,15 +9,25 @@ use super::{
     messages::{Message, ResponseMessage},
 };
 use log::{info, warn};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 
-struct Guardian;
+// Actor name constants for logging
+const GUARDIAN_ACTOR_NAME: &str = "GUARDIAN";
+const ACTOR_SYSTEM_NAME: &str = "Actor System";
+
+struct Guardian {
+    shutdown_tx: Option<broadcast::Sender<()>>,
+}
 
 impl<MType: Send + Clone> Actor<MType, ResponseMessage> for Guardian {
     async fn receive(&mut self, message: Message<MType, ResponseMessage>) {
-        info!("Guardian received a message");
+        info!(actor=GUARDIAN_ACTOR_NAME; "Guardian received a message");
         if message.stop {
-            info!("Guardian received a stop message");
+            info!(actor=GUARDIAN_ACTOR_NAME; "Guardian received a stop message. Shutting down...");
+            if let Some(ref shutdown_tx) = self.shutdown_tx {
+                let _ = shutdown_tx.send(());
+                info!(actor=GUARDIAN_ACTOR_NAME; "Shutdown signal broadcast to all actors");
+            }
         }
         match message.responder {
             Some(responder) => {
@@ -74,6 +84,7 @@ pub struct ActorSystem<MType: Send + Clone + 'static, Response: Send + Clone + '
     total_messages: &'static AtomicUsize,
     total_threads: &'static AtomicUsize,
     snd: mpsc::Sender<Message<MType, ResponseMessage>>,
+    shutdown_tx: broadcast::Sender<()>,
 }
 
 impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFactory<MType, Response> for ActorSystem<MType, Response> {
@@ -121,10 +132,11 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
     /// The guardian will be dormant until start_system is called in the ActorSystem.
     pub(super) fn new() -> Self {
         let (tx, rx) = mpsc::channel::<Message<MType, ResponseMessage>>(super::SIDS_DEFAULT_BUFFER_SIZE);
-        info!(actor = "guardian"; "Guardian channel and actor created. Launching...");
-        info!(actor = "guardian"; "Guardian actor spawned");
-        let guardian = ActorImpl::new(Some("Guardian Type".to_string()), Guardian, rx);
-        info!(actor = "guardian"; "Actor system created");
+        let (shutdown_tx, _) = broadcast::channel::<()>(1);
+        info!(actor = "GUARDIAN"; "Guardian channel and actor created. Launching...");
+        info!(actor = "GUARDIAN"; "Guardian actor spawned");
+        let guardian = ActorImpl::new(Some("Guardian Type".to_string()), Guardian { shutdown_tx: Some(shutdown_tx.clone()) }, rx, None);
+        info!(actor = "GUARDIAN"; "Actor system created");
         static MESSAGE_MONITOR: AtomicUsize = AtomicUsize::new(0);
         static THREAD_MONITOR: AtomicUsize = AtomicUsize::new(0);
         let actor_ref = ActorRef::new(guardian, tx.clone(), &THREAD_MONITOR, &MESSAGE_MONITOR);
@@ -137,6 +149,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
             total_messages: &MESSAGE_MONITOR,
             total_threads: &THREAD_MONITOR,
             snd: tx,
+            shutdown_tx,
         }
     }
 
@@ -144,26 +157,28 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
     where
         T: Actor<MType, Response> + 'static,
     {
-        info!("Spawning actor within the actor system.");
+        info!(actor=ACTOR_SYSTEM_NAME;"Spawning actor within the actor system.");
         let (snd, rec) = self.create_actor_channel();
-        let actor_impl = ActorImpl::new(name, actor, rec);
+        let shutdown_rx = self.shutdown_tx.subscribe();
+        let actor_impl = ActorImpl::new(name, actor, rec, Some(shutdown_rx));
         let actor_ref = ActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
         let actor_id = self.actors.len() as u32;
         self.actors.insert(actor_id, actor_ref);
-        info!("Actor spawned successfully with id: {}", actor_id);
+        info!(actor=ACTOR_SYSTEM_NAME; "Actor spawned successfully with id: {}", actor_id);
     }
 
     pub(super) fn spawn_blocking_actor<T>(&mut self, actor: T, name: Option<String>)
     where
         T: Actor<MType, Response> + 'static,
     {
-        info!("Spawning blocking actor within the actor system.");
+        info!(actor=ACTOR_SYSTEM_NAME; "Spawning blocking actor within the actor system.");
         let (snd, rec) = self.create_blocking_actor_channel();
-        let actor_impl = BlockingActorImpl::new(name, actor, rec);
+        let shutdown_rx = self.shutdown_tx.subscribe();
+        let actor_impl = BlockingActorImpl::new(name, actor, rec, Some(shutdown_rx));
         let actor_ref = BlockingActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
         let actor_id = self.blocking_actors.len() as u32;
         self.blocking_actors.insert(actor_id, actor_ref);
-        info!("Blocking actor spawned successfully with id: {}", actor_id);
+        info!(actor=ACTOR_SYSTEM_NAME; "Blocking actor spawned successfully with id: {}", actor_id);
     }
 
     pub(super) async fn send_message_to_actor(&mut self, actor_id: u32, message: Message<MType, Response>) {
@@ -205,7 +220,41 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
             .await
             .expect("Failed to send message");
     }
+    /// Send a shutdown signal to the guardian, which will broadcast shutdown to all actors.
+    pub async fn shutdown(&self) -> Result<(), String> {
+        info!("Sending shutdown signal to guardian");
+        let (tx, rx) = self.create_guardian_response_channel();
+        self.snd
+            .send(Message {
+                payload: None,
+                stop: true,
+                responder: Some(tx),
+                blocking: None,
+            })
+            .await
+            .map_err(|e| format!("Failed to send shutdown message: {}", e))?;
+        
+        rx.await
+            .map(|_| {
+                info!("Guardian confirmed shutdown");
+            })
+            .map_err(|e| format!("Guardian failed to respond: {}", e))
+    }
 
+    /// Get a receiver for the shutdown broadcast signal.
+    /// Useful if you want to await system shutdown outside the actor system.
+    pub fn subscribe_shutdown(&self) -> broadcast::Receiver<()> {
+        self.shutdown_tx.subscribe()
+    }
+
+    fn create_guardian_response_channel(
+        &self,
+    ) -> (
+        tokio::sync::oneshot::Sender<ResponseMessage>,
+        tokio::sync::oneshot::Receiver<ResponseMessage>,
+    ) {
+        oneshot::channel::<ResponseMessage>()
+    }
     pub fn get_actor_ref(&self, id: u32) -> ActorRef<MType, Response> {
         self.actors.get(&id).expect("Failed to get actor").clone()
     }
@@ -558,6 +607,32 @@ mod tests {
         actor_system.spawn_blocking_actor(actor, None);
         
         assert_eq!(actor_system.blocking_actors.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_signal_broadcast() {
+        // Test that the shutdown broadcast channel can be subscribed to
+        let actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
+        
+        // Subscribe to the shutdown signal (does not receive yet)
+        let mut shutdown_rx1 = actor_system.subscribe_shutdown();
+        let mut shutdown_rx2 = actor_system.subscribe_shutdown();
+        
+        // Manually broadcast shutdown signal
+        let _ = actor_system.shutdown_tx.send(());
+        
+        // Both receivers should get the signal
+        let result1 = tokio::time::timeout(
+            tokio::time::Duration::from_millis(100),
+            shutdown_rx1.recv()
+        ).await;
+        let result2 = tokio::time::timeout(
+            tokio::time::Duration::from_millis(100),
+            shutdown_rx2.recv()
+        ).await;
+        
+        assert!(result1.is_ok(), "First receiver should get shutdown signal");
+        assert!(result2.is_ok(), "Second receiver should get shutdown signal");
     }
 }
 

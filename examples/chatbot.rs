@@ -35,7 +35,7 @@ impl Alice {
     // Actor needs to be static to ensure that the actor is not moved before the message is sent.
     fn add_partner<T: Actor<ChatMessage, ResponseMessage> + 'static>(&mut self, partner: T, name: String, thread_ref: &'static std::sync::atomic::AtomicUsize, message_ref: &'static std::sync::atomic::AtomicUsize) {
         let (sender, receiver) = tokio::sync::mpsc::channel::<Message<ChatMessage, ResponseMessage>>(100);
-        let actor = ActorImpl::<T, ChatMessage, ResponseMessage>::new(Some(name.clone()), partner, receiver);
+        let actor = ActorImpl::<T, ChatMessage, ResponseMessage>::new(Some(name.clone()), partner, receiver, None);
         let reference = ActorRef::new(actor, sender, thread_ref, message_ref);
         self.partners.insert(name, reference);
     }
