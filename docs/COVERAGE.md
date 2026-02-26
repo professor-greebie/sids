@@ -1,6 +1,7 @@
 # Code Coverage Setup
 
-This project uses `cargo-llvm-cov` for code coverage analysis, configured to work within institutional constraints (all file operations restricted to `C:\Studentwork`).
+This project uses `cargo-llvm-cov` for code coverage analysis, configured to work within institutional constraints (all
+file operations restricted to `C:\Studentwork`).
 
 ## Quick Start
 

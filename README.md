@@ -1,5 +1,10 @@
 # SIDS - An Actor Model Approach to Data Collection in RUST
 
+[![CI](https://github.com/professor-greebie/sids/actions/workflows/ci.yml/badge.svg)](https://github.com/professor-greebie/sids/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/sids.svg)](https://crates.io/crates/sids)
+[![Documentation](https://docs.rs/sids/badge.svg)](https://docs.rs/sids)
+[![License](https://img.shields.io/crates/l/sids.svg)](LICENSE.md)
+
 This is an experimental actor-model system library built in Rust. The repository has a few Mermaid diagrams
 and examples available for you to examine if you are interested in implementing the approach yourself.
 
@@ -19,6 +24,12 @@ For a streaming example, run:
 cargo run --example source --features streaming
 ```
 
+For an actor-critic machine learning example:
+
+```bash
+cargo run --example actor_critic
+```
+
 ## What This Does
 
 This project demonstrates a practical approach to building concurrent systems in Rust using:
@@ -26,27 +37,37 @@ This project demonstrates a practical approach to building concurrent systems in
 - **Actor Model**: A message-passing architecture with isolated, concurrent actors
 - **Streaming Pipelines**: Functional reactive programming patterns for data processing
 
-The project allows for abstraction between Tokio-based asynchronous actors and blocking actors, providing a flexible foundation for concurrent application development.
+The project allows for abstraction between Tokio-based asynchronous actors and blocking actors,
+providing a flexible foundation for concurrent application development.
 
 ### Basic Concepts
 
-An actor implements an `Actor<MType, Response>` trait that includes a `receive` function accepting a message type of `Message<MType, Response>`.
+An actor implements an `Actor<MType, Response>` trait that includes a `receive` function accepting a
+message type of `Message<MType, Response>`.
 
-The `Message` struct covers the most common Actor behaviors (stop, responses etc.), but you can add more as part of the payload, which is of type MType.
+The `Message` struct covers the most common Actor behaviors (stop, responses etc.), but you can add
+more as part of the payload, which is of type MType.
 
-MType can be any base type (`String`, `u32` etc.) or an enum provided that it has Send features and can have static lifetime. Enums are powerful in Rust, so they are highly recommended. See the [Rust documentation on enum types for more information](https://doc.rust-lang.org/book/ch06-00-enums.html)
+MType can be any base type (`String`, `u32` etc.) or an enum provided that it has Send features and
+can have static lifetime. Enums are powerful in Rust, so they are highly recommended. See the
+[Rust documentation on enum types for more information](https://doc.rust-lang.org/book/ch06-00-enums.html)
 
-`Response` is any enum that actors use to send return messages back to the sender. A generic `ResponseMessage` can be used by default.
+`Response` is any enum that actors use to send return messages back to the sender. A generic
+`ResponseMessage` can be used by default.
 
-Once you choose an `MType`, the `ActorSystem` uses the same message type throughout the system. Currently, only one `MType` is allowed; however, with Rust's enums, there is significant capacity for variance in message types.
+Once you choose an `MType`, the `ActorSystem` uses the same message type throughout the system.
+Currently, only one `MType` is allowed; however, with Rust's enums, there is significant capacity
+for variance in message types.
 
 ```rust
 let mut actor_system = sids::actors::start_actor_system::<MType, Response>();
 ```
 
-Starting an actor system initializes the system and runs a 'boss' actor called the `Guardian` with an id of 0. You can ping the boss using `sids::actors::ping_actor_system(&actor_system);`
+Starting an actor system initializes the system and runs a 'boss' actor called the `Guardian` with
+an id of 0. You can ping the boss using `sids::actors::ping_actor_system(&actor_system);`
 
-You can add an actor to the system by creating a structure that implements the `Actor<MType>` trait. All actors must receive a `Message<MType>`.
+You can add an actor to the system by creating a structure that implements the `Actor<MType>` trait.
+All actors must receive a `Message<MType>`.
 
 ```rust
 
@@ -82,21 +103,26 @@ impl Actor<MyMessage, ResponseMessage> for MyActor {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let my_actor = MyActor;
 
     let mut actor_system = sids::actors::start_actor_system::<MyMessage, ResponseMessage>();
-    // gets a oneshot channel to receive a response from the system.
-    let (tx, rx) = sids::actors::get_response_channel(&actor_system);
+    
+    // Get a response handler for receiving the response
+    let (handler, rx) = sids::actors::get_response_handler::<ResponseMessage>();
+    
     let message = Message {
-        payload: Some(MyMessage::HELLO),
+        payload: Some(MyMessage::Hello),
         stop: false,
-        responder: Some(tx),
+        responder: Some(handler),
         blocking: None,
     };
+    
     spawn_actor(&mut actor_system, my_actor, Some("My Actor".to_string())).await;
-    // guardian is 0, so our actor id will be #1.
-    send_message_by_id(&mut actor_system, 1, message).await;
+    
+    // Guardian is 0, so our actor id will be #1
+    send_message_by_id(&mut actor_system, 1, message).await?;
+    
     if let Ok(response) = rx.await {
         info!("Response received from actor {:?}", response);
     }
@@ -175,6 +201,31 @@ cargo build --features streaming
 cargo test --features streaming --lib
 ```
 
+### Actor-Critic Machine Learning Example
+
+```bash
+# Run the actor-critic reinforcement learning example
+cargo run --example actor_critic
+```
+
+This example demonstrates a practical reinforcement learning system using the actor-critic pattern:
+
+- **Environment**: Multi-armed bandit with 3 arms (different reward probabilities)
+- **Actor Agent**: Learns which arm to pull (action policy)
+- **Critic Agent**: Evaluates expected rewards (value function)
+- **Coordinator**: Manages the training loop with message passing
+
+The example shows:
+
+- Multiple coordinating actors working together
+- Request-response patterns using `get_response_handler`
+- Temporal difference (TD) learning with actor-critic updates
+- Real-world machine learning patterns in concurrent systems
+
+After 500 episodes, the actor learns to prefer the arm with the highest reward probability (50%),
+demonstrating how SIDS can be used for machine learning applications where actors coordinate to
+learn optimal policies.
+
 ## Testing and Coverage
 
 The project includes comprehensive test coverage across all modules:
@@ -241,13 +292,34 @@ This will automatically:
 - Open the report in your browser
 - Keep all artifacts within the project directory
 
-For more details, see [COVERAGE.md](COVERAGE.md).
+For more details, see [docs/COVERAGE.md](docs/COVERAGE.md).
+
+## Documentation
+
+- **[GUIDE.md](GUIDE.md)** - Complete user guide covering error handling, response handling, supervision,
+  and shutdown
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and migration guides
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines for developers
+- **[docs/STABILITY.md](docs/STABILITY.md)** - API stability policy and semantic versioning guarantees
+- **[docs/architecture/](architecture/)** - System architecture and design documentation
+- **[API Documentation](https://docs.rs/sids)** - Complete API reference on docs.rs
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
+- Development setup
+- Testing guidelines
+- Code style requirements
+- Pull request process
 
 ## The Future
 
-From a prototype perspective, this is final version of this project, except for performance and safety tweaks.
+From a prototype perspective, this is the final version of this project, except for performance and
+safety tweaks.
 
-We will also include some more advanced examples, including using the Actor System to do Actor-Critic Machine Learning work.
+The project includes advanced examples demonstrating real-world use cases, including actor-critic
+machine learning with reinforcement learning agents (see `examples/actor_critic.rs`).
 
 ## Citations
 

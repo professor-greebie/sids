@@ -12,9 +12,12 @@ coverage/
 node_modules/
 package.json
 package-lock.json
+.markdownlint.json
 
 # Cargo lock file (not needed for libraries)
 Cargo.lock
 
 # Local configuration (do not commit)
 sids.config.toml
+clippy_output.txt
+.cargo

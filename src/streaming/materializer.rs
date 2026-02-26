@@ -1,5 +1,5 @@
-use crate::actors::actor_ref::ActorRef;
 use super::stream_message::StreamMessage;
+use crate::actors::actor_ref::ActorRef;
 
 /// Trait for materializers that orchestrate stream execution
 pub trait Materializer {
@@ -41,8 +41,18 @@ impl StreamMaterializer {
 
     /// Get the actor references for debugging
     #[allow(clippy::type_complexity)]
-    pub fn get_refs(&self) -> (Option<&ActorRef<StreamMessage, StreamMessage>>, &[ActorRef<StreamMessage, StreamMessage>], Option<&ActorRef<StreamMessage, StreamMessage>>) {
-        (self.source_ref.as_ref(), &self.flow_refs, self.sink_ref.as_ref())
+    pub fn get_refs(
+        &self,
+    ) -> (
+        Option<&ActorRef<StreamMessage, StreamMessage>>,
+        &[ActorRef<StreamMessage, StreamMessage>],
+        Option<&ActorRef<StreamMessage, StreamMessage>>,
+    ) {
+        (
+            self.source_ref.as_ref(),
+            &self.flow_refs,
+            self.sink_ref.as_ref(),
+        )
     }
 }
 

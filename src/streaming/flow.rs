@@ -1,6 +1,6 @@
+use super::stream_message::StreamMessage;
 use crate::actors::actor::Actor;
 use crate::actors::messages::Message;
-use super::stream_message::StreamMessage;
 use log::info;
 
 /// A Flow transforms data as it passes through the stream.
@@ -28,12 +28,15 @@ where
     }
 
     /// Set the downstream actor to send transformed data to
-    pub fn set_downstream(&mut self, sender: tokio::sync::mpsc::Sender<Message<StreamMessage, StreamMessage>>) {
+    pub fn set_downstream(
+        &mut self,
+        sender: tokio::sync::mpsc::Sender<Message<StreamMessage, StreamMessage>>,
+    ) {
         self.downstream = Some(sender);
     }
 
     /// Chain another transformation to this flow
-    /// 
+    ///
     /// Creates a new Flow that applies both transformations in sequence
     pub fn map<G>(self, g: G) -> Flow<impl Fn(StreamMessage) -> StreamMessage + Send + 'static>
     where
@@ -45,9 +48,12 @@ where
     }
 
     /// Add a filter to this flow
-    /// 
+    ///
     /// Messages that don't pass the predicate are converted to Error messages
-    pub fn filter<P>(self, predicate: P) -> Flow<impl Fn(StreamMessage) -> StreamMessage + Send + 'static>
+    pub fn filter<P>(
+        self,
+        predicate: P,
+    ) -> Flow<impl Fn(StreamMessage) -> StreamMessage + Send + 'static>
     where
         P: Fn(&StreamMessage) -> bool + Send + 'static,
     {
@@ -76,12 +82,14 @@ where
             if payload.is_terminal() {
                 info!(actor=self.name.clone().as_str(); "Flow '{}' received terminal message, forwarding downstream", self.name);
                 if let Some(downstream) = &self.downstream {
-                    let _ = downstream.send(Message {
-                        payload: Some(payload),
-                        stop: false,
-                        responder: None,
-                        blocking: None,
-                    }).await;
+                    let _ = downstream
+                        .send(Message {
+                            payload: Some(payload),
+                            stop: false,
+                            responder: None,
+                            blocking: None,
+                        })
+                        .await;
                 }
                 return;
             }
@@ -92,12 +100,14 @@ where
 
             // Send transformed data downstream
             if let Some(downstream) = &self.downstream {
-                let _ = downstream.send(Message {
-                    payload: Some(transformed),
-                    stop: false,
-                    responder: None,
-                    blocking: None,
-                }).await;
+                let _ = downstream
+                    .send(Message {
+                        payload: Some(transformed),
+                        stop: false,
+                        responder: None,
+                        blocking: None,
+                    })
+                    .await;
             }
         }
     }
