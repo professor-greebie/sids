@@ -2,7 +2,7 @@
 name = "sids"
 version = "1.0.0"
 edition = "2021"
-rust-version = "1.81.0"
+rust-version = "1.83.0"
 authors = ["Ryan Deschamps <rdeschamps@conestogac.on.ca>"]
 repository = "https://github.com/professor-greebie/sids"
 description = "An actor-model concurrency framework providing abstraction over async and blocking actors."
