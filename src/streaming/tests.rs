@@ -1,11 +1,11 @@
 /// Unit tests for the streaming module
 use super::*;
 use crate::actors::start_actor_system;
+use flow::{transforms, Flow};
+use sink::{consumers, Sink};
 use source::{Source, SourceActor, SourceError};
-use stream_message::{StreamMessage, NotUsed};
-use sink::{Sink, consumers};
-use flow::{Flow, transforms};
 use std::sync::{Arc, Mutex};
+use stream_message::{NotUsed, StreamMessage};
 use tokio::time::{timeout, Duration, Instant};
 
 #[cfg(test)]
@@ -61,7 +61,12 @@ mod source_tests {
 
     #[test]
     fn test_source_chained_transformations() {
-        let items = vec!["1".to_string(), "2".to_string(), "3".to_string(), "4".to_string()];
+        let items = vec![
+            "1".to_string(),
+            "2".to_string(),
+            "3".to_string(),
+            "4".to_string(),
+        ];
         let source = Source::from_items(items)
             .map_lines(|s| {
                 let num: i32 = s.parse().unwrap_or(0);
@@ -71,7 +76,7 @@ mod source_tests {
                 let num: i32 = s.parse().unwrap_or(0);
                 num > 2
             });
-        
+
         assert_eq!(source.data().unwrap(), "4\n6\n8");
     }
 
@@ -79,9 +84,7 @@ mod source_tests {
     fn test_source_binary_map() {
         let data = vec![1u8, 2u8, 3u8];
         let source = Source::new(data.clone(), NotUsed);
-        let mapped = source.map(|bytes| {
-            bytes.iter().map(|b| b * 2).collect()
-        });
+        let mapped = source.map(|bytes| bytes.iter().map(|b| b * 2).collect());
         assert_eq!(mapped.data().unwrap(), &vec![2u8, 4u8, 6u8]);
     }
 
@@ -111,7 +114,7 @@ mod source_tests {
         let nu1 = NotUsed;
         let _nu2 = nu1; // Should work because NotUsed implements Copy
         let _nu3 = nu1; // Should still work
-        // If we got here, Copy works
+                        // If we got here, Copy works
     }
 
     #[tokio::test]
@@ -190,26 +193,22 @@ mod flow_tests {
     #[test]
     fn test_flow_map() {
         let flow = Flow::new("base".to_string(), transforms::identity);
-        let _mapped = flow.map(|msg| {
-            match msg {
-                StreamMessage::Text(text) => StreamMessage::Text(text.to_uppercase()),
-                other => other,
-            }
+        let _mapped = flow.map(|msg| match msg {
+            StreamMessage::Text(text) => StreamMessage::Text(text.to_uppercase()),
+            other => other,
         });
-        
+
         // Just verify it compiles - actual transformation tested in integration tests
     }
 
     #[test]
     fn test_flow_filter() {
         let flow = Flow::new("base".to_string(), transforms::identity);
-        let _filtered = flow.filter(|msg| {
-            match msg {
-                StreamMessage::Text(ref text) => text.len() > 5,
-                _ => true,
-            }
+        let _filtered = flow.filter(|msg| match msg {
+            StreamMessage::Text(ref text) => text.len() > 5,
+            _ => true,
         });
-        
+
         // Just verify it compiles - actual filtering tested in integration tests
     }
 
@@ -253,14 +252,14 @@ mod sink_tests {
     fn test_sink_for_each() {
         let counter = Arc::new(Mutex::new(0));
         let counter_clone = counter.clone();
-        
+
         let consumer = consumers::for_each(move |_line| {
             *counter_clone.lock().unwrap() += 1;
         });
-        
+
         // Simulate processing messages
         consumer(StreamMessage::Text("line1\nline2\nline3".to_string()));
-        
+
         let count = *counter.lock().unwrap();
         assert_eq!(count, 3);
     }
@@ -269,15 +268,15 @@ mod sink_tests {
     fn test_sink_for_each_with_bytes() {
         let collected = Arc::new(Mutex::new(Vec::new()));
         let collected_clone = collected.clone();
-        
+
         let consumer = consumers::for_each(move |line: &str| {
             collected_clone.lock().unwrap().push(line.to_string());
         });
-        
+
         // Test with UTF-8 data
         let data = "hello\nworld".as_bytes().to_vec();
         consumer(StreamMessage::Data(data));
-        
+
         let lines = collected.lock().unwrap();
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0], "hello");
@@ -288,17 +287,17 @@ mod sink_tests {
     fn test_sink_for_each_message() {
         let counter = Arc::new(Mutex::new(0));
         let counter_clone = counter.clone();
-        
+
         let consumer = consumers::for_each_message(move |msg| {
             if matches!(msg, StreamMessage::Text(_)) {
                 *counter_clone.lock().unwrap() += 1;
             }
         });
-        
+
         consumer(StreamMessage::Text("message1".to_string()));
         consumer(StreamMessage::Text("message2".to_string()));
         consumer(StreamMessage::Complete);
-        
+
         let count = *counter.lock().unwrap();
         assert_eq!(count, 2);
     }
@@ -306,10 +305,10 @@ mod sink_tests {
     #[test]
     fn test_sink_collector() {
         let (collector, storage) = consumers::create_collector();
-        
+
         collector(StreamMessage::Data(vec![1, 2, 3]));
         collector(StreamMessage::Data(vec![4, 5, 6]));
-        
+
         let collected = storage.lock().unwrap();
         assert_eq!(collected.len(), 2);
         assert_eq!(collected[0], vec![1, 2, 3]);
@@ -336,18 +335,15 @@ mod integration_tests {
         let collected_clone = collected.clone();
 
         let source = Source::new("test message".to_string(), NotUsed);
-        let sink = Sink::new(
-            "collector".to_string(),
-            move |msg: StreamMessage| {
-                if let StreamMessage::Text(text) = msg {
-                    collected_clone.lock().unwrap().push(text);
-                }
+        let sink = Sink::new("collector".to_string(), move |msg: StreamMessage| {
+            if let StreamMessage::Text(text) = msg {
+                collected_clone.lock().unwrap().push(text);
             }
-        );
+        });
 
         let mut actor_system = start_actor_system();
         let _materializer = source.to_sink(&mut actor_system, sink).await;
-        
+
         // Give actors time to process
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
@@ -363,18 +359,15 @@ mod integration_tests {
 
         let source = Source::new("hello streaming".to_string(), NotUsed);
         let flow = Flow::new("uppercase".to_string(), transforms::to_uppercase);
-        let sink = Sink::new(
-            "collector".to_string(),
-            move |msg: StreamMessage| {
-                if let StreamMessage::Text(text) = msg {
-                    collected_clone.lock().unwrap().push(text);
-                }
+        let sink = Sink::new("collector".to_string(), move |msg: StreamMessage| {
+            if let StreamMessage::Text(text) = msg {
+                collected_clone.lock().unwrap().push(text);
             }
-        );
+        });
 
         let mut actor_system = start_actor_system();
         let _materializer = source.via_to_sink(&mut actor_system, flow, sink).await;
-        
+
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         let data = collected.lock().unwrap();
@@ -387,7 +380,13 @@ mod integration_tests {
         let collected = Arc::new(Mutex::new(Vec::new()));
         let collected_clone = collected.clone();
 
-        let items = vec!["1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(), "5".to_string()];
+        let items = vec![
+            "1".to_string(),
+            "2".to_string(),
+            "3".to_string(),
+            "4".to_string(),
+            "5".to_string(),
+        ];
         let source = Source::from_items(items)
             .map_lines(|s| {
                 let num: i32 = s.parse().unwrap_or(0);
@@ -402,12 +401,12 @@ mod integration_tests {
             "collector".to_string(),
             consumers::for_each(move |line| {
                 collected_clone.lock().unwrap().push(line.to_string());
-            })
+            }),
         );
 
         let mut actor_system = start_actor_system();
         let _materializer = source.to_sink(&mut actor_system, sink).await;
-        
+
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         let data = collected.lock().unwrap();
@@ -424,31 +423,24 @@ mod integration_tests {
 
         let source = Source::new("hello world rust".to_string(), NotUsed);
         let flow = Flow::new("uppercase".to_string(), transforms::to_uppercase)
-            .map(|msg| {
-                match msg {
-                    StreamMessage::Text(text) => StreamMessage::Text(text.replace(" ", "_")),
-                    other => other,
-                }
+            .map(|msg| match msg {
+                StreamMessage::Text(text) => StreamMessage::Text(text.replace(" ", "_")),
+                other => other,
             })
-            .filter(|msg| {
-                match msg {
-                    StreamMessage::Text(ref text) => text.len() > 10,
-                    _ => true,
-                }
+            .filter(|msg| match msg {
+                StreamMessage::Text(ref text) => text.len() > 10,
+                _ => true,
             });
 
-        let sink = Sink::new(
-            "collector".to_string(),
-            move |msg: StreamMessage| {
-                if let StreamMessage::Text(text) = msg {
-                    collected_clone.lock().unwrap().push(text);
-                }
+        let sink = Sink::new("collector".to_string(), move |msg: StreamMessage| {
+            if let StreamMessage::Text(text) = msg {
+                collected_clone.lock().unwrap().push(text);
             }
-        );
+        });
 
         let mut actor_system = start_actor_system();
         let _materializer = source.via_to_sink(&mut actor_system, flow, sink).await;
-        
+
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         let data = collected.lock().unwrap();
@@ -463,19 +455,16 @@ mod integration_tests {
 
         let data = vec![72, 69, 76, 76, 79]; // "HELLO" in ASCII
         let source = Source::new(data.clone(), NotUsed);
-        
-        let sink = Sink::new(
-            "collector".to_string(),
-            move |msg: StreamMessage| {
-                if let StreamMessage::Data(bytes) = msg {
-                    collected_clone.lock().unwrap().push(bytes);
-                }
+
+        let sink = Sink::new("collector".to_string(), move |msg: StreamMessage| {
+            if let StreamMessage::Data(bytes) = msg {
+                collected_clone.lock().unwrap().push(bytes);
             }
-        );
+        });
 
         let mut actor_system = start_actor_system();
         let _materializer = source.to_sink(&mut actor_system, sink).await;
-        
+
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         let collected_data = collected.lock().unwrap();
@@ -542,6 +531,9 @@ mod backpressure_tests {
             source_actor.emit_all().await;
         })
         .await;
-        assert!(result.is_ok(), "Emission should complete even if downstream closes");
+        assert!(
+            result.is_ok(),
+            "Emission should complete even if downstream closes"
+        );
     }
 }

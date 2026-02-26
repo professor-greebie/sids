@@ -1,10 +1,10 @@
-use crate::actors::messages::Message;
+use super::flow::Flow;
+use super::materializer::StreamMaterializer;
+use super::sink::Sink;
+use super::stream_message::{NotUsed, StreamMessage};
 use crate::actors::actor::Actor;
 use crate::actors::actor_system::ActorSystem;
-use super::stream_message::{NotUsed, StreamMessage};
-use super::materializer::StreamMaterializer;
-use super::flow::Flow;
-use super::sink::Sink;
+use crate::actors::messages::Message;
 use log::info;
 use std::time::Duration;
 
@@ -20,7 +20,10 @@ pub struct Source<SourceType, Materializer> {
 
 impl Default for Source<(), NotUsed> {
     fn default() -> Self {
-        Source { mat: NotUsed, data: None }
+        Source {
+            mat: NotUsed,
+            data: None,
+        }
     }
 }
 
@@ -40,7 +43,10 @@ pub enum SourceError {
 
 impl<T, Materializer> Source<T, Materializer> {
     pub fn new(data: T, mat: Materializer) -> Self {
-        Source { mat, data: Some(data) }
+        Source {
+            mat,
+            data: Some(data),
+        }
     }
 
     pub fn to_materializer(&self) -> &Materializer {
@@ -53,9 +59,9 @@ impl<T, Materializer> Source<T, Materializer> {
     }
 
     /// Get the size/length of the data if it implements a size method
-    pub fn data_len(&self) -> Option<usize> 
+    pub fn data_len(&self) -> Option<usize>
     where
-        T: AsRef<[u8]>
+        T: AsRef<[u8]>,
     {
         self.data.as_ref().map(|d| d.as_ref().len())
     }
@@ -63,9 +69,9 @@ impl<T, Materializer> Source<T, Materializer> {
 
 impl Source<String, NotUsed> {
     /// Create a source from a vector of strings
-    /// 
+    ///
     /// Each string will be joined with newlines
-    /// 
+    ///
     /// # Example
     /// ```no_run
     /// use sids::streaming::source::Source;
@@ -75,14 +81,14 @@ impl Source<String, NotUsed> {
     /// ```
     pub fn from_items(items: Vec<String>) -> Self {
         let data = items.join("\n");
-        Source { 
-            mat: NotUsed, 
-            data: Some(data) 
+        Source {
+            mat: NotUsed,
+            data: Some(data),
         }
     }
 
     /// Map the text data in this source with a transformation function
-    /// 
+    ///
     /// # Example
     /// ```no_run
     /// use sids::streaming::source::Source;
@@ -90,7 +96,7 @@ impl Source<String, NotUsed> {
     /// let source = Source::new("hello".to_string(), NotUsed);
     /// let mapped = source.map(|text| text.to_uppercase());
     /// ```
-    pub fn map<F>(mut self, f: F) -> Self 
+    pub fn map<F>(mut self, f: F) -> Self
     where
         F: FnOnce(String) -> String,
     {
@@ -101,9 +107,9 @@ impl Source<String, NotUsed> {
     }
 
     /// Filter the text data, retaining it only if the predicate returns true
-    /// 
+    ///
     /// If the predicate returns false, the source will have no data
-    pub fn filter<F>(mut self, f: F) -> Self 
+    pub fn filter<F>(mut self, f: F) -> Self
     where
         F: FnOnce(&String) -> bool,
     {
@@ -116,7 +122,7 @@ impl Source<String, NotUsed> {
     }
 
     /// Process each line of text with a function
-    pub fn map_lines<F>(mut self, f: F) -> Self 
+    pub fn map_lines<F>(mut self, f: F) -> Self
     where
         F: Fn(&str) -> String,
     {
@@ -128,7 +134,7 @@ impl Source<String, NotUsed> {
     }
 
     /// Filter lines based on a predicate
-    pub fn filter_lines<F>(mut self, f: F) -> Self 
+    pub fn filter_lines<F>(mut self, f: F) -> Self
     where
         F: Fn(&str) -> bool,
     {
@@ -142,7 +148,7 @@ impl Source<String, NotUsed> {
 
 impl Source<Vec<u8>, NotUsed> {
     /// Map the byte data in this source with a transformation function
-    pub fn map<F>(mut self, f: F) -> Self 
+    pub fn map<F>(mut self, f: F) -> Self
     where
         F: FnOnce(Vec<u8>) -> Vec<u8>,
     {
@@ -153,7 +159,7 @@ impl Source<Vec<u8>, NotUsed> {
     }
 
     /// Filter the byte data, retaining it only if the predicate returns true
-    pub fn filter<F>(mut self, f: F) -> Self 
+    pub fn filter<F>(mut self, f: F) -> Self
     where
         F: FnOnce(&Vec<u8>) -> bool,
     {
@@ -169,19 +175,19 @@ impl Source<Vec<u8>, NotUsed> {
 #[cfg(feature = "streaming")]
 impl Source<Vec<u8>, NotUsed> {
     /// Creates a source from a URL with safeguards for bad data.
-    /// 
+    ///
     /// `from_url` retrieves data from a URL and creates a source from it.
-    /// 
+    ///
     /// # Arguments
     /// * `url` - The URL to fetch data from
-    /// 
+    ///
     /// # Safeguards
     /// * Validates URL format before making request
     /// * Enforces 30-second timeout
     /// * Checks HTTP status codes
     /// * Limits response size to 10MB
     /// * Validates content is not empty
-    /// 
+    ///
     /// # Returns
     /// * `Ok(Source)` - Successfully fetched data
     /// * `Err(SourceError)` - Failed with detailed error information
@@ -189,31 +195,30 @@ impl Source<Vec<u8>, NotUsed> {
         let parsed_url = reqwest::Url::parse(url)
             .map_err(|e| SourceError::InvalidUrl(format!("Invalid URL format: {}", e)))?;
         if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
-            return Err(SourceError::InvalidUrl(
-                format!("Only HTTP(S) URLs are supported, got: {}", parsed_url.scheme())
-            ));
+            return Err(SourceError::InvalidUrl(format!(
+                "Only HTTP(S) URLs are supported, got: {}",
+                parsed_url.scheme()
+            )));
         }
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| SourceError::NetworkError(format!("Failed to build client: {}", e)))?;
-        let response = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| {
-                if e.is_timeout() {
-                    SourceError::Timeout
-                } else {
-                    SourceError::NetworkError(format!("Request failed: {}", e))
-                }
-            })?;
+        let response = client.get(url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                SourceError::Timeout
+            } else {
+                SourceError::NetworkError(format!("Request failed: {}", e))
+            }
+        })?;
 
         // Check HTTP status
         if !response.status().is_success() {
-            return Err(SourceError::InvalidResponse(
-                format!("HTTP error: {} - {}", response.status(), response.status().canonical_reason().unwrap_or("Unknown"))
-            ));
+            return Err(SourceError::InvalidResponse(format!(
+                "HTTP error: {} - {}",
+                response.status(),
+                response.status().canonical_reason().unwrap_or("Unknown")
+            )));
         }
 
         // Check content length if available (10MB limit)
@@ -225,10 +230,9 @@ impl Source<Vec<u8>, NotUsed> {
         }
 
         // Get the bytes
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| SourceError::NetworkError(format!("Failed to read response body: {}", e)))?;
+        let bytes = response.bytes().await.map_err(|e| {
+            SourceError::NetworkError(format!("Failed to read response body: {}", e))
+        })?;
 
         // Verify size after download
         if bytes.len() > MAX_SIZE {
@@ -250,11 +254,11 @@ impl Source<Vec<u8>, NotUsed> {
 #[cfg(feature = "streaming")]
 impl Source<String, NotUsed> {
     /// Creates a source from a URL and parses response as UTF-8 text.
-    /// 
+    ///
     /// Similar to `from_url` but returns the data as a String with UTF-8 validation.
     pub async fn from_url_text(url: &str) -> Result<Self, SourceError> {
         let bytes_source = Source::<Vec<u8>, NotUsed>::from_url(url).await?;
-        
+
         let text = String::from_utf8(bytes_source.data.unwrap_or_default())
             .map_err(|e| SourceError::InvalidResponse(format!("Invalid UTF-8: {}", e)))?;
 
@@ -265,70 +269,76 @@ impl Source<String, NotUsed> {
     }
 
     /// Creates a source from a file path with safeguards.
-    /// 
+    ///
     /// `from_file` reads a file and creates a source from its contents.
-    /// 
+    ///
     /// # Arguments
     /// * `path` - The file path to read from
-    /// 
+    ///
     /// # Safeguards
     /// * Validates file exists
     /// * Checks file permissions
     /// * Limits file size to 10MB
     /// * Validates UTF-8 encoding
     /// * Checks for empty files
-    /// 
+    ///
     /// # Returns
     /// * `Ok(Source)` - Successfully read file
     /// * `Err(SourceError)` - Failed with detailed error information
     pub fn from_file(path: &str) -> Result<Self, SourceError> {
-        use std::path::Path;
         use std::fs;
-        
+        use std::path::Path;
+
         // Validate path
         let file_path = Path::new(path);
-        
+
         // Check if path is valid
         if path.is_empty() {
             return Err(SourceError::InvalidPath("Empty path provided".to_string()));
         }
-        
+
         // Check if file exists
         if !file_path.exists() {
-            return Err(SourceError::FileNotFound(format!("File not found: {}", path)));
+            return Err(SourceError::FileNotFound(format!(
+                "File not found: {}",
+                path
+            )));
         }
-        
+
         // Check if it's a file (not a directory)
         if !file_path.is_file() {
-            return Err(SourceError::InvalidPath(format!("Path is not a file: {}", path)));
+            return Err(SourceError::InvalidPath(format!(
+                "Path is not a file: {}",
+                path
+            )));
         }
-        
+
         // Check file metadata for size
-        let metadata = fs::metadata(file_path)
-            .map_err(|e| SourceError::FileReadError(format!("Failed to read file metadata: {}", e)))?;
-        
+        let metadata = fs::metadata(file_path).map_err(|e| {
+            SourceError::FileReadError(format!("Failed to read file metadata: {}", e))
+        })?;
+
         const MAX_SIZE: u64 = 10 * 1024 * 1024; // 10MB
         if metadata.len() > MAX_SIZE {
             return Err(SourceError::TooLarge(metadata.len() as usize));
         }
-        
+
         // Check for empty file
         if metadata.len() == 0 {
             return Err(SourceError::EmptyResponse);
         }
-        
+
         // Read file contents
-        let contents = fs::read_to_string(file_path)
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    SourceError::PermissionDenied(format!("Permission denied: {}", path))
-                } else if e.kind() == std::io::ErrorKind::InvalidData {
-                    SourceError::InvalidResponse(format!("File contains invalid UTF-8: {}", path))
-                } else {
-                    SourceError::FileReadError(format!("Failed to read file: {}", e))
-                }
-            })?;
-        
+        let contents = fs::read_to_string(file_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                SourceError::PermissionDenied(format!("Permission denied: {}", path))
+            } else if e.kind() == std::io::ErrorKind::InvalidData {
+                SourceError::InvalidResponse(format!("File contains invalid UTF-8: {}", path))
+            } else {
+                SourceError::FileReadError(format!("Failed to read file: {}", e))
+            }
+        })?;
+
         Ok(Source {
             mat: NotUsed,
             data: Some(contents),
@@ -339,48 +349,54 @@ impl Source<String, NotUsed> {
 #[cfg(feature = "streaming")]
 impl Source<Vec<u8>, NotUsed> {
     /// Creates a source from a file path as raw bytes.
-    /// 
+    ///
     /// Similar to `from_file` but returns raw bytes without UTF-8 validation.
     /// Useful for binary files.
     pub fn from_file_bytes(path: &str) -> Result<Self, SourceError> {
-        use std::path::Path;
         use std::fs;
-        
+        use std::path::Path;
+
         let file_path = Path::new(path);
-        
+
         if path.is_empty() {
             return Err(SourceError::InvalidPath("Empty path provided".to_string()));
         }
-        
+
         if !file_path.exists() {
-            return Err(SourceError::FileNotFound(format!("File not found: {}", path)));
+            return Err(SourceError::FileNotFound(format!(
+                "File not found: {}",
+                path
+            )));
         }
-        
+
         if !file_path.is_file() {
-            return Err(SourceError::InvalidPath(format!("Path is not a file: {}", path)));
+            return Err(SourceError::InvalidPath(format!(
+                "Path is not a file: {}",
+                path
+            )));
         }
-        
-        let metadata = fs::metadata(file_path)
-            .map_err(|e| SourceError::FileReadError(format!("Failed to read file metadata: {}", e)))?;
-        
+
+        let metadata = fs::metadata(file_path).map_err(|e| {
+            SourceError::FileReadError(format!("Failed to read file metadata: {}", e))
+        })?;
+
         const MAX_SIZE: u64 = 10 * 1024 * 1024; // 10MB
         if metadata.len() > MAX_SIZE {
             return Err(SourceError::TooLarge(metadata.len() as usize));
         }
-        
+
         if metadata.len() == 0 {
             return Err(SourceError::EmptyResponse);
         }
-        
-        let contents = fs::read(file_path)
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    SourceError::PermissionDenied(format!("Permission denied: {}", path))
-                } else {
-                    SourceError::FileReadError(format!("Failed to read file: {}", e))
-                }
-            })?;
-        
+
+        let contents = fs::read(file_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                SourceError::PermissionDenied(format!("Permission denied: {}", path))
+            } else {
+                SourceError::FileReadError(format!("Failed to read file: {}", e))
+            }
+        })?;
+
         Ok(Source {
             mat: NotUsed,
             data: Some(contents),
@@ -406,29 +422,40 @@ impl SourceActor {
         }
     }
 
-    pub fn set_downstream(&mut self, sender: tokio::sync::mpsc::Sender<Message<StreamMessage, StreamMessage>>) {
+    pub fn set_downstream(
+        &mut self,
+        sender: tokio::sync::mpsc::Sender<Message<StreamMessage, StreamMessage>>,
+    ) {
         self.downstream = Some(sender);
     }
 
     /// Emit all data to downstream
     pub async fn emit_all(&mut self) {
         if let Some(downstream) = &self.downstream {
-            info!("SourceActor '{}' emitting {} messages", self.name, self.data.len());
+            info!(
+                "SourceActor '{}' emitting {} messages",
+                self.name,
+                self.data.len()
+            );
             for msg in &self.data {
-                let _ = downstream.send(Message {
-                    payload: Some(msg.clone()),
+                let _ = downstream
+                    .send(Message {
+                        payload: Some(msg.clone()),
+                        stop: false,
+                        responder: None,
+                        blocking: None,
+                    })
+                    .await;
+            }
+            // Send completion signal
+            let _ = downstream
+                .send(Message {
+                    payload: Some(StreamMessage::Complete),
                     stop: false,
                     responder: None,
                     blocking: None,
-                }).await;
-            }
-            // Send completion signal
-            let _ = downstream.send(Message {
-                payload: Some(StreamMessage::Complete),
-                stop: false,
-                responder: None,
-                blocking: None,
-            }).await;
+                })
+                .await;
             info!("SourceActor '{}' completed emission", self.name);
         }
     }
@@ -473,32 +500,42 @@ impl Source<Vec<u8>, NotUsed> {
 
         // Create source actor
         let mut source_actor = SourceActor::new("ByteSource".to_string(), data);
-        
+
         // Spawn sink actor
         info!("Spawning sink actor");
         let sink_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(sink, Some("Sink".to_string())).await;
-        let sink_ref = actor_system.get_actor_ref(sink_id);
-        
+        actor_system
+            .spawn_actor(sink, Some("Sink".to_string()))
+            .await;
+        let sink_ref = actor_system
+            .get_actor_ref(sink_id)
+            .expect("Sink actor should exist after spawning");
+
         // Set source downstream to sink
         source_actor.set_downstream(sink_ref.sender.clone());
-        
+
         // Spawn source actor
         info!("Spawning source actor");
         let source_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(source_actor, Some("Source".to_string())).await;
-        let source_ref = actor_system.get_actor_ref(source_id);
-        
+        actor_system
+            .spawn_actor(source_actor, Some("Source".to_string()))
+            .await;
+        let source_ref = actor_system
+            .get_actor_ref(source_id)
+            .expect("Source actor should exist after spawning");
+
         materializer.set_source(source_ref.clone());
         materializer.set_sink(sink_ref);
-        
+
         // Trigger emission
-        source_ref.send(Message {
-            payload: Some(StreamMessage::Text("start".to_string())),
-            stop: false,
-            responder: None,
-            blocking: None,
-        }).await;
+        source_ref
+            .send(Message {
+                payload: Some(StreamMessage::Text("start".to_string())),
+                stop: false,
+                responder: None,
+                blocking: None,
+            })
+            .await;
 
         materializer
     }
@@ -525,48 +562,62 @@ impl Source<Vec<u8>, NotUsed> {
 
         // Create source actor
         let mut source_actor = SourceActor::new("ByteSource".to_string(), data);
-        
+
         // Spawn sink actor first
         info!("Spawning sink actor");
         let sink_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(sink, Some("Sink".to_string())).await;
-        let sink_ref = actor_system.get_actor_ref(sink_id);
-        
+        actor_system
+            .spawn_actor(sink, Some("Sink".to_string()))
+            .await;
+        let sink_ref = actor_system
+            .get_actor_ref(sink_id)
+            .expect("Sink actor should exist after spawning");
+
         // Spawn flow actor
         info!("Spawning flow actor");
         let mut flow_actor = flow;
         flow_actor.set_downstream(sink_ref.sender.clone());
         let flow_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(flow_actor, Some("Flow".to_string())).await;
-        let flow_ref = actor_system.get_actor_ref(flow_id);
-        
+        actor_system
+            .spawn_actor(flow_actor, Some("Flow".to_string()))
+            .await;
+        let flow_ref = actor_system
+            .get_actor_ref(flow_id)
+            .expect("Flow actor should exist after spawning");
+
         // Set source downstream to flow
         source_actor.set_downstream(flow_ref.sender.clone());
-        
+
         // Spawn source actor
         info!("Spawning source actor");
         let source_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(source_actor, Some("Source".to_string())).await;
-        let source_ref = actor_system.get_actor_ref(source_id);
-        
+        actor_system
+            .spawn_actor(source_actor, Some("Source".to_string()))
+            .await;
+        let source_ref = actor_system
+            .get_actor_ref(source_id)
+            .expect("Source actor should exist after spawning");
+
         materializer.set_source(source_ref.clone());
         materializer.add_flow(flow_ref);
         materializer.set_sink(sink_ref);
-        
+
         // Record message flow for visualization
         #[cfg(feature = "visualize")]
         {
             actor_system.record_message_sent(source_id, flow_id);
             actor_system.record_message_sent(flow_id, sink_id);
         }
-        
+
         // Trigger emission
-        source_ref.send(Message {
-            payload: Some(StreamMessage::Text("start".to_string())),
-            stop: false,
-            responder: None,
-            blocking: None,
-        }).await;
+        source_ref
+            .send(Message {
+                payload: Some(StreamMessage::Text("start".to_string())),
+                stop: false,
+                responder: None,
+                blocking: None,
+            })
+            .await;
 
         materializer
     }
@@ -594,32 +645,42 @@ impl Source<String, NotUsed> {
 
         // Create source actor
         let mut source_actor = SourceActor::new("TextSource".to_string(), data);
-        
+
         // Spawn sink actor
         info!("Spawning sink actor");
         let sink_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(sink, Some("Sink".to_string())).await;
-        let sink_ref = actor_system.get_actor_ref(sink_id);
-        
+        actor_system
+            .spawn_actor(sink, Some("Sink".to_string()))
+            .await;
+        let sink_ref = actor_system
+            .get_actor_ref(sink_id)
+            .expect("Sink actor should exist after spawning");
+
         // Set source downstream to sink
         source_actor.set_downstream(sink_ref.sender.clone());
-        
+
         // Spawn source actor
         info!("Spawning source actor");
         let source_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(source_actor, Some("Source".to_string())).await;
-        let source_ref = actor_system.get_actor_ref(source_id);
-        
+        actor_system
+            .spawn_actor(source_actor, Some("Source".to_string()))
+            .await;
+        let source_ref = actor_system
+            .get_actor_ref(source_id)
+            .expect("Source actor should exist after spawning");
+
         materializer.set_source(source_ref.clone());
         materializer.set_sink(sink_ref);
-        
+
         // Trigger emission
-        source_ref.send(Message {
-            payload: Some(StreamMessage::Text("start".to_string())),
-            stop: false,
-            responder: None,
-            blocking: None,
-        }).await;
+        source_ref
+            .send(Message {
+                payload: Some(StreamMessage::Text("start".to_string())),
+                stop: false,
+                responder: None,
+                blocking: None,
+            })
+            .await;
 
         materializer
     }
@@ -646,48 +707,62 @@ impl Source<String, NotUsed> {
 
         // Create source actor
         let mut source_actor = SourceActor::new("TextSource".to_string(), data);
-        
+
         // Spawn sink actor first
         info!("Spawning sink actor");
         let sink_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(sink, Some("Sink".to_string())).await;
-        let sink_ref = actor_system.get_actor_ref(sink_id);
-        
+        actor_system
+            .spawn_actor(sink, Some("Sink".to_string()))
+            .await;
+        let sink_ref = actor_system
+            .get_actor_ref(sink_id)
+            .expect("Sink actor should exist after spawning");
+
         // Spawn flow actor
         info!("Spawning flow actor");
         let mut flow_actor = flow;
         flow_actor.set_downstream(sink_ref.sender.clone());
         let flow_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(flow_actor, Some("Flow".to_string())).await;
-        let flow_ref = actor_system.get_actor_ref(flow_id);
-        
+        actor_system
+            .spawn_actor(flow_actor, Some("Flow".to_string()))
+            .await;
+        let flow_ref = actor_system
+            .get_actor_ref(flow_id)
+            .expect("Flow actor should exist after spawning");
+
         // Set source downstream to flow
         source_actor.set_downstream(flow_ref.sender.clone());
-        
+
         // Spawn source actor
         info!("Spawning source actor");
         let source_id = actor_system.get_actor_count() as u32;
-        actor_system.spawn_actor(source_actor, Some("Source".to_string())).await;
-        let source_ref = actor_system.get_actor_ref(source_id);
-        
+        actor_system
+            .spawn_actor(source_actor, Some("Source".to_string()))
+            .await;
+        let source_ref = actor_system
+            .get_actor_ref(source_id)
+            .expect("Source actor should exist after spawning");
+
         materializer.set_source(source_ref.clone());
         materializer.add_flow(flow_ref);
         materializer.set_sink(sink_ref);
-        
+
         // Record message flow for visualization
         #[cfg(feature = "visualize")]
         {
             actor_system.record_message_sent(source_id, flow_id);
             actor_system.record_message_sent(flow_id, sink_id);
         }
-        
+
         // Trigger emission
-        source_ref.send(Message {
-            payload: Some(StreamMessage::Text("start".to_string())),
-            stop: false,
-            responder: None,
-            blocking: None,
-        }).await;
+        source_ref
+            .send(Message {
+                payload: Some(StreamMessage::Text("start".to_string())),
+                stop: false,
+                responder: None,
+                blocking: None,
+            })
+            .await;
 
         materializer
     }

@@ -3,8 +3,12 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::messages::Message;
 
-type AsyncActorChannel<R, Response> = (mpsc::Sender<Message<R, Response>>, mpsc::Receiver<Message<R, Response>>);
-type BlockingActorChannel<R, Response> = (Sender<Message<R, Response>>, Receiver<Message<R, Response>>);
+type AsyncActorChannel<R, Response> = (
+    mpsc::Sender<Message<R, Response>>,
+    mpsc::Receiver<Message<R, Response>>,
+);
+type BlockingActorChannel<R, Response> =
+    (Sender<Message<R, Response>>, Receiver<Message<R, Response>>);
 
 pub trait ChannelFactory<R, Response: Send + Clone + 'static> {
     fn create_actor_channel(&self) -> AsyncActorChannel<R, Response>;

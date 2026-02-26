@@ -7,6 +7,7 @@ use super::{
     actor::Actor,
     actor_ref::{ActorRef, BlockingActorRef},
     channel_factory::ChannelFactory,
+    error::{ActorError, ActorResult},
     messages::{Message, ResponseMessage},
 };
 use log::{info, warn};
@@ -20,6 +21,9 @@ use crate::supervision::{ActorMetrics, SupervisionData, SupervisionSummary};
 const GUARDIAN_ACTOR_NAME: &str = "GUARDIAN";
 const ACTOR_SYSTEM_NAME: &str = "Actor System";
 
+/// The Guardian is a special actor that manages the lifecycle of the actor system.
+/// It listens for shutdown signals and broadcasts them to all actors in the system.
+/// It also responds to pings to confirm that the system is alive.
 struct Guardian {
     shutdown_tx: Option<broadcast::Sender<()>>,
 }
@@ -36,9 +40,7 @@ impl<MType: Send + Clone> Actor<MType, ResponseMessage> for Guardian {
         }
         match message.responder {
             Some(responder) => {
-                responder
-                    .send(ResponseMessage::Success)
-                    .expect("Failed to send response");
+                responder.handle(ResponseMessage::Success).await;
             }
             None => {
                 info!("No responder found");
@@ -46,7 +48,6 @@ impl<MType: Send + Clone> Actor<MType, ResponseMessage> for Guardian {
         }
     }
 }
-
 
 /// The ActorSystem is the main entry point for the actor system. It is responsible for creating the guardian actor and sending messages to the guardian actor.
 ///
@@ -64,7 +65,7 @@ impl<MType: Send + Clone> Actor<MType, ResponseMessage> for Guardian {
 /// struct SampleActor;
 /// impl Actor<String, ResponseMessage> for SampleActor {
 ///    async fn receive(&mut self, message: Message<String, ResponseMessage>) {
-///       message.responder.unwrap().send(ResponseMessage::Success).expect("Failed to send response");
+///       message.responder.unwrap().handle(ResponseMessage::Success).await;
 ///    }
 /// }
 ///
@@ -73,8 +74,8 @@ impl<MType: Send + Clone> Actor<MType, ResponseMessage> for Guardian {
 ///    
 ///    // Creates a new actor system that uses String as the message type.
 ///    let mut actor_system = actors::start_actor_system::<String, ResponseMessage>();
-///    let (tx, rx) = actors::get_response_channel(&mut actor_system);
-///    let message = Message { payload: Some("My String Message".to_string()), stop: false, responder: Some(tx), blocking: None };
+///    let (handler, rx) = actors::get_response_handler::<ResponseMessage>();
+///    let message = Message { payload: Some("My String Message".to_string()), stop: false, responder: Some(handler), blocking: None };
 ///    actors::spawn_actor(&mut actor_system, actor, Some("Sample Actor".to_string())).await;
 ///    actors::send_message_by_id(&mut actor_system, 1, message).await;
 ///    let response = rx.await.expect("Failed to receive response");
@@ -86,6 +87,7 @@ pub struct ActorSystem<MType: Send + Clone + 'static, Response: Send + Clone + '
     _guardian: ActorRef<MType, ResponseMessage>,
     actors: HashMap<u32, ActorRef<MType, Response>>,
     blocking_actors: HashMap<u32, BlockingActorRef<MType, Response>>,
+    actor_names: HashMap<u32, String>,
     total_messages: &'static AtomicUsize,
     total_threads: &'static AtomicUsize,
     snd: mpsc::Sender<Message<MType, ResponseMessage>>,
@@ -96,7 +98,10 @@ pub struct ActorSystem<MType: Send + Clone + 'static, Response: Send + Clone + '
     supervision: SupervisionData,
 }
 
-impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFactory<MType, Response> for ActorSystem<MType, Response> {
+impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static>
+    ChannelFactory<MType, Response> for ActorSystem<MType, Response>
+{
+    /// Creates a new actor channel with the configured buffer size. Returns a sender and receiver for the channel.
     fn create_actor_channel(
         &self,
     ) -> (
@@ -106,6 +111,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFac
         mpsc::channel::<Message<MType, Response>>(self.actor_buffer_size)
     }
 
+    /// Creates a new blocking actor channel. Returns a sender and receiver for the channel.
     fn create_blocking_actor_channel(
         &self,
     ) -> (
@@ -115,6 +121,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFac
         std::sync::mpsc::channel::<Message<MType, Response>>()
     }
 
+    /// Creates a new oneshot response channel. Returns a sender and receiver for the channel.
     fn create_response_channel(
         &self,
     ) -> (
@@ -124,12 +131,14 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ChannelFac
         oneshot::channel::<Response>()
     }
 
+    /// Creates a new onehot blocking response channel. Returns a sender and receiver for the channel.
     fn create_blocking_response_channel(
         &self,
     ) -> (
         std::sync::mpsc::SyncSender<Response>,
         std::sync::mpsc::Receiver<Response>,
     ) {
+        // Buffer size of one because responses should only ever be sent one time.
         std::sync::mpsc::sync_channel::<Response>(1)
     }
 }
@@ -144,23 +153,32 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
     }
 
     pub(super) fn new_with_config(config: SidsConfig) -> Self {
-        let actor_buffer_size = config.actor_system.actor_buffer_size;
-        let shutdown_timeout_ms = config.actor_system.shutdown_timeout_ms;
+        let actor_buffer_size = config.configuration.actor_buffer_size;
+        let shutdown_timeout_ms = config.configuration.shutdown_timeout_ms;
         let (tx, rx) = mpsc::channel::<Message<MType, ResponseMessage>>(actor_buffer_size);
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
         info!(actor = "GUARDIAN"; "Guardian channel and actor created. Launching...");
         info!(actor = "GUARDIAN"; "Guardian actor spawned");
-        let guardian = ActorImpl::new(Some("Guardian Type".to_string()), Guardian { shutdown_tx: Some(shutdown_tx.clone()) }, rx, None);
+        let guardian = ActorImpl::new(
+            Some("Guardian Type".to_string()),
+            Guardian {
+                shutdown_tx: Some(shutdown_tx.clone()),
+            },
+            rx,
+            None,
+        );
         info!(actor = "GUARDIAN"; "Actor system created");
         static MESSAGE_MONITOR: AtomicUsize = AtomicUsize::new(0);
         static THREAD_MONITOR: AtomicUsize = AtomicUsize::new(0);
         let actor_ref = ActorRef::new(guardian, tx.clone(), &THREAD_MONITOR, &MESSAGE_MONITOR);
         let actors = HashMap::<u32, ActorRef<MType, Response>>::new();
         let blocking_actors = HashMap::new();
+        let actor_names = HashMap::new();
         ActorSystem {
             _guardian: actor_ref,
             actors,
             blocking_actors,
+            actor_names,
             total_messages: &MESSAGE_MONITOR,
             total_threads: &THREAD_MONITOR,
             snd: tx,
@@ -183,12 +201,18 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         let actor_ref = ActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
         let actor_id = self.actors.len() as u32;
         self.actors.insert(actor_id, actor_ref);
-        
+
+        // Store actor name
+        let actor_name = name
+            .clone()
+            .unwrap_or_else(|| format!("Actor<{}>", actor_id));
+        self.actor_names.insert(actor_id, actor_name.clone());
+
         #[cfg(feature = "visualize")]
         {
-            self.record_actor_spawn(actor_id, name.unwrap_or_else(|| format!("Actor<{}>", actor_id)));
+            self.record_actor_spawn(actor_id, actor_name);
         }
-        
+
         info!(actor=ACTOR_SYSTEM_NAME; "Actor spawned successfully with id: {}", actor_id);
     }
 
@@ -200,19 +224,30 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         let (snd, rec) = self.create_blocking_actor_channel();
         let shutdown_rx = self.shutdown_tx.subscribe();
         let actor_impl = BlockingActorImpl::new(name.clone(), actor, rec, Some(shutdown_rx));
-        let actor_ref = BlockingActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
+        let actor_ref =
+            BlockingActorRef::new(actor_impl, snd, self.total_threads, self.total_messages);
         let actor_id = self.blocking_actors.len() as u32;
         self.blocking_actors.insert(actor_id, actor_ref);
-        
+
+        // Store actor name
+        let actor_name = name
+            .clone()
+            .unwrap_or_else(|| format!("BlockingActor<{}>", actor_id));
+        self.actor_names.insert(actor_id, actor_name.clone());
+
         #[cfg(feature = "visualize")]
         {
-            self.record_actor_spawn(actor_id, name.unwrap_or_else(|| format!("BlockingActor<{}>", actor_id)));
+            self.record_actor_spawn(actor_id, actor_name);
         }
-        
+
         info!(actor=ACTOR_SYSTEM_NAME; "Blocking actor spawned successfully with id: {}", actor_id);
     }
 
-    pub(super) async fn send_message_to_actor(&mut self, actor_id: u32, message: Message<MType, Response>) {
+    pub(super) async fn send_message_to_actor(
+        &mut self,
+        actor_id: u32,
+        message: Message<MType, Response>,
+    ) -> ActorResult<()> {
         if let Message {
             payload: _,
             stop: _,
@@ -223,9 +258,9 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
             let blocking_actor = self
                 .blocking_actors
                 .get_mut(&actor_id)
-                .expect("Failed to get blocking actor");
+                .ok_or(ActorError::ActorNotFound { id: actor_id })?;
             blocking_actor.send(message);
-            
+
             #[cfg(feature = "visualize")]
             {
                 self.record_message_processed(actor_id);
@@ -237,9 +272,12 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
             blocking: None,
         } = &message
         {
-            let actor = self.actors.get_mut(&actor_id).expect("Failed to get actor");
+            let actor = self
+                .actors
+                .get_mut(&actor_id)
+                .ok_or(ActorError::ActorNotFound { id: actor_id })?;
             actor.send(message).await;
-            
+
             #[cfg(feature = "visualize")]
             {
                 self.record_message_processed(actor_id);
@@ -247,9 +285,10 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         } else {
             warn!("No actor found with id: {}", actor_id);
         }
+        Ok(())
     }
 
-    pub(super) async fn ping_system(&self) {
+    pub(super) async fn ping_system(&self) -> ActorResult<()> {
         info!("Pinging system");
         self.snd
             .send(Message {
@@ -259,37 +298,42 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
                 blocking: None,
             })
             .await
-            .expect("Failed to send message");
+            .map_err(|e| ActorError::SendFailed {
+                reason: format!("Failed to ping guardian: {}", e),
+            })?;
+        Ok(())
     }
     /// Send a shutdown signal to the guardian, which will broadcast shutdown to all actors.
-    pub async fn shutdown(&self) -> Result<(), String> {
+    pub async fn shutdown(&self) -> ActorResult<()> {
         info!("Sending shutdown signal to guardian");
-        let (tx, rx) = self.create_guardian_response_channel();
+        let (handler, rx) = self.create_guardian_response_channel();
         self.snd
             .send(Message {
                 payload: None,
                 stop: true,
-                responder: Some(tx),
+                responder: Some(handler),
                 blocking: None,
             })
             .await
-            .map_err(|e| format!("Failed to send shutdown message: {}", e))?;
-        
+            .map_err(|e| ActorError::SendFailed {
+                reason: format!("Failed to send shutdown: {}", e),
+            })?;
+
         if let Some(timeout_ms) = self.shutdown_timeout_ms {
             match timeout(Duration::from_millis(timeout_ms), rx).await {
                 Ok(result) => result
                     .map(|_| {
                         info!("Guardian confirmed shutdown");
                     })
-                    .map_err(|e| format!("Guardian failed to respond: {}", e)),
-                Err(_) => Err(format!("Guardian shutdown timed out after {} ms", timeout_ms)),
+                    .map_err(|_| ActorError::GuardianNotResponding),
+                Err(_) => Err(ActorError::ShutdownTimeout),
             }
         } else {
             rx.await
                 .map(|_| {
                     info!("Guardian confirmed shutdown");
                 })
-                .map_err(|e| format!("Guardian failed to respond: {}", e))
+                .map_err(|_| ActorError::GuardianNotResponding)
         }
     }
 
@@ -302,13 +346,72 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
     fn create_guardian_response_channel(
         &self,
     ) -> (
-        tokio::sync::oneshot::Sender<ResponseMessage>,
+        super::response_handler::BoxedResponseHandler<ResponseMessage>,
         tokio::sync::oneshot::Receiver<ResponseMessage>,
     ) {
-        oneshot::channel::<ResponseMessage>()
+        use super::response_handler::from_oneshot;
+        let (tx, rx) = oneshot::channel::<ResponseMessage>();
+        let handler = from_oneshot(tx);
+        (handler, rx)
     }
-    pub fn get_actor_ref(&self, id: u32) -> ActorRef<MType, Response> {
-        self.actors.get(&id).expect("Failed to get actor").clone()
+    pub fn get_actor_ref(&self, id: u32) -> ActorResult<ActorRef<MType, Response>> {
+        self.actors
+            .get(&id)
+            .cloned()
+            .ok_or(ActorError::ActorNotFound { id })
+    }
+
+    /// Sends a stop message to a specific actor by ID.
+    /// Returns an error if the actor does not exist.
+    pub async fn stop_actor(&mut self, id: u32) -> ActorResult<()> {
+        let stop_message = Message {
+            payload: None,
+            stop: true,
+            responder: None,
+            blocking: None,
+        };
+        self.send_message_to_actor(id, stop_message).await
+    }
+
+    /// Returns a list of all actors with their IDs and names.
+    /// Names are returned as they were provided during spawn, or auto-generated if none was provided.
+    pub fn list_actors(&self) -> Vec<(u32, String)> {
+        let mut actors = Vec::new();
+
+        // Collect async actors
+        for (id, _) in self.actors.iter() {
+            if let Some(name) = self.actor_names.get(id) {
+                actors.push((*id, name.clone()));
+            }
+        }
+
+        // Collect blocking actors
+        for (id, _) in self.blocking_actors.iter() {
+            if let Some(name) = self.actor_names.get(id) {
+                actors.push((*id, name.clone()));
+            }
+        }
+
+        actors.sort_by_key(|(id, _)| *id);
+        actors
+    }
+
+    /// Finds an actor ID by its name.
+    /// Returns the first actor found with the matching name.
+    /// Returns an error if no actor with that name exists.
+    pub fn find_actor_by_name(&self, name: &str) -> ActorResult<u32> {
+        self.actor_names
+            .iter()
+            .find(|(_, actor_name)| actor_name.as_str() == name)
+            .map(|(id, _)| *id)
+            .ok_or(ActorError::InvalidState {
+                reason: format!("Actor with name '{}' not found", name),
+            })
+    }
+
+    /// Checks if an actor with the given ID exists in the system.
+    pub fn actor_exists(&self, id: u32) -> bool {
+        self.actors.contains_key(&id) || self.blocking_actors.contains_key(&id)
     }
 
     pub fn get_actor_count(&self) -> usize {
@@ -324,23 +427,28 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
     }
 
     pub fn get_thread_count(&self) -> usize {
-        self.total_threads.load(std::sync::atomic::Ordering::Relaxed)
+        self.total_threads
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn get_message_count(&self) -> usize {
-        self.total_messages.load(std::sync::atomic::Ordering::Relaxed)
+        self.total_messages
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     #[cfg(feature = "visualize")]
     pub fn record_actor_spawn(&mut self, actor_id: u32, actor_type: String) {
         let actor_id_str = format!("actor-{}", actor_id);
         let actor_metrics = ActorMetrics::new(actor_id_str, actor_type);
-        self.supervision.actors.insert(format!("actor-{}", actor_id), actor_metrics);
+        self.supervision
+            .actors
+            .insert(format!("actor-{}", actor_id), actor_metrics);
     }
 
     #[cfg(feature = "visualize")]
     pub fn record_message_processed(&mut self, actor_id: u32) {
-        self.supervision.record_message_processed(&format!("actor-{}", actor_id));
+        self.supervision
+            .record_message_processed(&format!("actor-{}", actor_id));
     }
 
     #[cfg(feature = "visualize")]
@@ -388,7 +496,7 @@ mod tests {
     impl Actor<StringPayload, ResponseMessage> for EchoActor {
         async fn receive(&mut self, message: Message<StringPayload, ResponseMessage>) {
             if let Some(responder) = message.responder {
-                let _ = responder.send(ResponseMessage::Success);
+                responder.handle(ResponseMessage::Success).await;
             }
         }
     }
@@ -427,7 +535,7 @@ mod tests {
             if message.payload.is_some() {
                 self.counter.fetch_add(1, Ordering::SeqCst);
                 if let Some(responder) = message.responder {
-                    let _ = responder.send(ResponseMessage::Success);
+                    responder.handle(ResponseMessage::Success).await;
                 }
             }
         }
@@ -452,9 +560,11 @@ mod tests {
     async fn test_spawn_actor() {
         let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
         let actor = EchoActor;
-        
-        actor_system.spawn_actor(actor, Some("TestActor".to_string())).await;
-        
+
+        actor_system
+            .spawn_actor(actor, Some("TestActor".to_string()))
+            .await;
+
         assert_eq!(actor_system.actors.len(), 1);
         assert_eq!(actor_system.get_actor_count(), 1);
     }
@@ -462,12 +572,14 @@ mod tests {
     #[tokio::test]
     async fn test_spawn_multiple_actors() {
         let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
-        
+
         for i in 0..5 {
             let actor = EchoActor;
-            actor_system.spawn_actor(actor, Some(format!("Actor_{}", i))).await;
+            actor_system
+                .spawn_actor(actor, Some(format!("Actor_{}", i)))
+                .await;
         }
-        
+
         assert_eq!(actor_system.actors.len(), 5);
         assert_eq!(actor_system.get_actor_count(), 5);
     }
@@ -476,9 +588,9 @@ mod tests {
     async fn test_spawn_blocking_actor() {
         let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
         let actor = BlockingEchoActor;
-        
+
         actor_system.spawn_blocking_actor(actor, Some("BlockingActor".to_string()));
-        
+
         assert_eq!(actor_system.blocking_actors.len(), 1);
     }
 
@@ -486,10 +598,14 @@ mod tests {
     async fn test_get_actor_ref() {
         let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
         let actor = EchoActor;
-        
-        actor_system.spawn_actor(actor, Some("TestActor".to_string())).await;
-        
-        let actor_ref = actor_system.get_actor_ref(0);
+
+        actor_system
+            .spawn_actor(actor, Some("TestActor".to_string()))
+            .await;
+
+        let actor_ref = actor_system
+            .get_actor_ref(0)
+            .expect("Guardian should exist");
         assert!(actor_ref.sender.capacity() > 0);
     }
 
@@ -497,20 +613,28 @@ mod tests {
     async fn test_send_message_to_actor() {
         let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
         let actor = EchoActor;
-        
-        actor_system.spawn_actor(actor, Some("EchoActor".to_string())).await;
-        
+
+        actor_system
+            .spawn_actor(actor, Some("EchoActor".to_string()))
+            .await;
+
         let (tx, rx) = actor_system.create_response_channel();
-        let payload = StringPayload { _content: "test".to_string() };
+        let handler = super::super::response_handler::from_oneshot(tx);
+        let payload = StringPayload {
+            _content: "test".to_string(),
+        };
         let message = Message {
             payload: Some(payload),
             stop: false,
-            responder: Some(tx),
+            responder: Some(handler),
             blocking: None,
         };
-        
-        actor_system.send_message_to_actor(0, message).await;
-        
+
+        actor_system
+            .send_message_to_actor(0, message)
+            .await
+            .expect("Send should succeed");
+
         let response = rx.await.expect("Failed to receive response");
         assert_eq!(response, ResponseMessage::Success);
     }
@@ -519,23 +643,28 @@ mod tests {
     async fn test_send_message_to_blocking_actor() {
         let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
         let actor = BlockingEchoActor;
-        
+
         actor_system.spawn_blocking_actor(actor, Some("BlockingEcho".to_string()));
-        
+
         let (tx, rx) = actor_system.create_blocking_response_channel();
-        let payload = StringPayload { _content: "test".to_string() };
+        let payload = StringPayload {
+            _content: "test".to_string(),
+        };
         let message = Message {
             payload: Some(payload),
             stop: false,
             responder: None,
             blocking: Some(tx),
         };
-        
-        actor_system.send_message_to_actor(0, message).await;
-        
+
+        actor_system
+            .send_message_to_actor(0, message)
+            .await
+            .expect("Send should succeed");
+
         // Give time for blocking actor to process
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-        
+
         let response = rx.recv().expect("Failed to receive response");
         assert_eq!(response, ResponseMessage::Success);
     }
@@ -545,10 +674,12 @@ mod tests {
         let mut actor_system = ActorSystem::<CounterPayload, ResponseMessage>::new();
         let total = Arc::new(Mutex::new(0));
         let total_clone = total.clone();
-        
+
         let actor = AccumulatorActor { total: total_clone };
-        actor_system.spawn_actor(actor, Some("Accumulator".to_string())).await;
-        
+        actor_system
+            .spawn_actor(actor, Some("Accumulator".to_string()))
+            .await;
+
         // Send multiple messages
         for i in 1..=10 {
             let payload = CounterPayload { value: i };
@@ -558,12 +689,15 @@ mod tests {
                 responder: None,
                 blocking: None,
             };
-            actor_system.send_message_to_actor(0, message).await;
+            actor_system
+                .send_message_to_actor(0, message)
+                .await
+                .expect("Send should succeed");
         }
-        
+
         // Give actors time to process
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-        
+
         let result = *total.lock().unwrap();
         assert_eq!(result, 55); // Sum of 1 to 10
     }
@@ -571,21 +705,28 @@ mod tests {
     #[tokio::test]
     async fn test_ping_system() {
         let actor_system = ActorSystem::<String, ResponseMessage>::new();
-        
+
         // Should not panic
-        actor_system.ping_system().await;
+        actor_system
+            .ping_system()
+            .await
+            .expect("Ping should succeed");
     }
 
     #[tokio::test]
     async fn test_get_actor_count() {
         let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
-        
+
         assert_eq!(actor_system.get_actor_count(), 0);
-        
-        actor_system.spawn_actor(EchoActor, Some("Actor1".to_string())).await;
+
+        actor_system
+            .spawn_actor(EchoActor, Some("Actor1".to_string()))
+            .await;
         assert_eq!(actor_system.get_actor_count(), 1);
-        
-        actor_system.spawn_actor(EchoActor, Some("Actor2".to_string())).await;
+
+        actor_system
+            .spawn_actor(EchoActor, Some("Actor2".to_string()))
+            .await;
         assert_eq!(actor_system.get_actor_count(), 2);
     }
 
@@ -593,7 +734,7 @@ mod tests {
     async fn test_create_actor_channel() {
         let actor_system = ActorSystem::<String, ResponseMessage>::new();
         let (tx, _rx) = actor_system.create_actor_channel();
-        
+
         assert!(tx.capacity() > 0);
     }
 
@@ -601,7 +742,7 @@ mod tests {
     async fn test_create_blocking_actor_channel() {
         let actor_system = ActorSystem::<String, ResponseMessage>::new();
         let (tx, _rx) = actor_system.create_blocking_actor_channel();
-        
+
         // Should successfully create channels
         let test_msg = Message {
             payload: Some("test".to_string()),
@@ -616,7 +757,7 @@ mod tests {
     async fn test_create_response_channel() {
         let actor_system = ActorSystem::<String, ResponseMessage>::new();
         let (tx, rx) = actor_system.create_response_channel();
-        
+
         tx.send(ResponseMessage::Success).unwrap();
         let response = rx.await.unwrap();
         assert_eq!(response, ResponseMessage::Success);
@@ -626,7 +767,7 @@ mod tests {
     async fn test_create_blocking_response_channel() {
         let actor_system = ActorSystem::<String, ResponseMessage>::new();
         let (tx, rx) = actor_system.create_blocking_response_channel();
-        
+
         tx.send(ResponseMessage::Success).unwrap();
         let response = rx.recv().unwrap();
         assert_eq!(response, ResponseMessage::Success);
@@ -635,17 +776,18 @@ mod tests {
     #[tokio::test]
     async fn test_guardian_receives_message() {
         let actor_system = ActorSystem::<String, ResponseMessage>::new();
-        
+
         let (tx, rx) = tokio::sync::oneshot::channel();
+        let handler = super::super::response_handler::from_oneshot(tx);
         let message = Message {
             payload: Some("test".to_string()),
             stop: false,
-            responder: Some(tx),
+            responder: Some(handler),
             blocking: None,
         };
-        
+
         actor_system.snd.send(message).await.unwrap();
-        
+
         let response = rx.await.expect("Guardian should respond");
         assert_eq!(response, ResponseMessage::Success);
     }
@@ -653,17 +795,17 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_actors_concurrent_messages() {
         let mut actor_system = ActorSystem::<CounterPayload, ResponseMessage>::new();
-        
+
         // Create 3 accumulator actors
-        let totals: Vec<Arc<Mutex<i32>>> = (0..3)
-            .map(|_| Arc::new(Mutex::new(0)))
-            .collect();
-        
+        let totals: Vec<Arc<Mutex<i32>>> = (0..3).map(|_| Arc::new(Mutex::new(0))).collect();
+
         for total in &totals {
-            let actor = AccumulatorActor { total: total.clone() };
+            let actor = AccumulatorActor {
+                total: total.clone(),
+            };
             actor_system.spawn_actor(actor, None).await;
         }
-        
+
         // Send messages to each actor
         for actor_id in 0..3 {
             for value in 1..=5 {
@@ -674,13 +816,16 @@ mod tests {
                     responder: None,
                     blocking: None,
                 };
-                actor_system.send_message_to_actor(actor_id, message).await;
+                actor_system
+                    .send_message_to_actor(actor_id, message)
+                    .await
+                    .expect("Send should succeed");
             }
         }
-        
+
         // Give time for processing
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-        
+
         // Each actor should have sum of 1 to 5 = 15
         for total in totals {
             assert_eq!(*total.lock().unwrap(), 15);
@@ -693,7 +838,7 @@ mod tests {
         let _system1 = ActorSystem::<String, ResponseMessage>::new();
         let _system2 = ActorSystem::<i32, ResponseMessage>::new();
         let _system3 = ActorSystem::<Vec<u8>, ResponseMessage>::new();
-        
+
         // Just verify they compile and construct
     }
 
@@ -701,9 +846,9 @@ mod tests {
     async fn test_spawn_actor_without_name() {
         let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
         let actor = EchoActor;
-        
+
         actor_system.spawn_actor(actor, None).await;
-        
+
         assert_eq!(actor_system.get_actor_count(), 1);
     }
 
@@ -711,9 +856,9 @@ mod tests {
     async fn test_spawn_blocking_actor_without_name() {
         let mut actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
         let actor = BlockingEchoActor;
-        
+
         actor_system.spawn_blocking_actor(actor, None);
-        
+
         assert_eq!(actor_system.blocking_actors.len(), 1);
     }
 
@@ -721,26 +866,27 @@ mod tests {
     async fn test_shutdown_signal_broadcast() {
         // Test that the shutdown broadcast channel can be subscribed to
         let actor_system = ActorSystem::<StringPayload, ResponseMessage>::new();
-        
+
         // Subscribe to the shutdown signal (does not receive yet)
         let mut shutdown_rx1 = actor_system.subscribe_shutdown();
         let mut shutdown_rx2 = actor_system.subscribe_shutdown();
-        
+
         // Manually broadcast shutdown signal
         let _ = actor_system.shutdown_tx.send(());
-        
+
         // Both receivers should get the signal
-        let result1 = tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            shutdown_rx1.recv()
-        ).await;
-        let result2 = tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            shutdown_rx2.recv()
-        ).await;
-        
+        let result1 =
+            tokio::time::timeout(tokio::time::Duration::from_millis(100), shutdown_rx1.recv())
+                .await;
+        let result2 =
+            tokio::time::timeout(tokio::time::Duration::from_millis(100), shutdown_rx2.recv())
+                .await;
+
         assert!(result1.is_ok(), "First receiver should get shutdown signal");
-        assert!(result2.is_ok(), "Second receiver should get shutdown signal");
+        assert!(
+            result2.is_ok(),
+            "Second receiver should get shutdown signal"
+        );
     }
 
     #[tokio::test]
@@ -751,18 +897,24 @@ mod tests {
             counter: counter.clone(),
         };
 
-        actor_system.spawn_actor(actor, Some("CountingActor".to_string())).await;
+        actor_system
+            .spawn_actor(actor, Some("CountingActor".to_string()))
+            .await;
 
         let (tx, rx) = actor_system.create_response_channel();
+        let handler = super::super::response_handler::from_oneshot(tx);
         let message = Message {
             payload: Some(StringPayload {
                 _content: "first".to_string(),
             }),
             stop: false,
-            responder: Some(tx),
+            responder: Some(handler),
             blocking: None,
         };
-        actor_system.send_message_to_actor(0, message).await;
+        actor_system
+            .send_message_to_actor(0, message)
+            .await
+            .expect("Send should succeed");
         let response = rx.await.expect("Failed to receive response");
         assert_eq!(response, ResponseMessage::Success);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
@@ -773,19 +925,26 @@ mod tests {
             responder: None,
             blocking: None,
         };
-        actor_system.send_message_to_actor(0, stop_message).await;
+        actor_system
+            .send_message_to_actor(0, stop_message)
+            .await
+            .expect("Send should succeed");
         tokio::time::sleep(Duration::from_millis(25)).await;
 
         let (tx2, rx2) = actor_system.create_response_channel();
+        let handler2 = super::super::response_handler::from_oneshot(tx2);
         let message_after_stop = Message {
             payload: Some(StringPayload {
                 _content: "after".to_string(),
             }),
             stop: false,
-            responder: Some(tx2),
+            responder: Some(handler2),
             blocking: None,
         };
-        actor_system.send_message_to_actor(0, message_after_stop).await;
+        actor_system
+            .send_message_to_actor(0, message_after_stop)
+            .await
+            .expect("Send should succeed");
 
         let result = timeout(Duration::from_millis(50), rx2).await;
         match result {
@@ -808,15 +967,19 @@ mod tests {
             .await;
 
         let (tx, rx) = actor_system.create_response_channel();
+        let handler = super::super::response_handler::from_oneshot(tx);
         let panic_message = Message {
             payload: Some(StringPayload {
                 _content: "boom".to_string(),
             }),
             stop: false,
-            responder: Some(tx),
+            responder: Some(handler),
             blocking: None,
         };
-        actor_system.send_message_to_actor(0, panic_message).await;
+        actor_system
+            .send_message_to_actor(0, panic_message)
+            .await
+            .expect("Send should succeed");
 
         let silent_result = timeout(Duration::from_millis(50), rx).await;
         match silent_result {
@@ -826,15 +989,19 @@ mod tests {
         }
 
         let (tx2, rx2) = actor_system.create_response_channel();
+        let handler2 = super::super::response_handler::from_oneshot(tx2);
         let echo_message = Message {
             payload: Some(StringPayload {
                 _content: "ok".to_string(),
             }),
             stop: false,
-            responder: Some(tx2),
+            responder: Some(handler2),
             blocking: None,
         };
-        actor_system.send_message_to_actor(1, echo_message).await;
+        actor_system
+            .send_message_to_actor(1, echo_message)
+            .await
+            .expect("Send should succeed");
 
         let echo_response = timeout(Duration::from_millis(50), rx2)
             .await
@@ -843,4 +1010,3 @@ mod tests {
         assert_eq!(echo_response, ResponseMessage::Success);
     }
 }
-

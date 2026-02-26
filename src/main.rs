@@ -3,8 +3,7 @@ use log::info;
 use std::io::Error;
 
 fn init_logger() {
-    let env = Env::default()
-        .filter_or("MY_LOG_LEVEL", "info");
+    let env = Env::default().filter_or("MY_LOG_LEVEL", "info");
     Builder::from_env(env).init()
 }
 
@@ -14,5 +13,3 @@ async fn main() -> Result<(), Error> {
     info!("Sending message to get actor reference");
     Ok(())
 }
-
-

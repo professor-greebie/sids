@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 
 /// Represents a point-in-time snapshot of an actor's metrics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,7 +125,12 @@ impl ActorMetrics {
     /// Record a failure event
     pub fn record_failed(&mut self, reason: String) {
         self.status = ActorStatus::Failed;
-        self.add_event(EventType::Failed { reason: reason.clone() }, Some(reason));
+        self.add_event(
+            EventType::Failed {
+                reason: reason.clone(),
+            },
+            Some(reason),
+        );
     }
 
     /// Record a shutdown event
@@ -188,7 +193,9 @@ impl SupervisionData {
     /// Add or get actor metrics
     pub fn get_or_create_actor(&mut self, id: String, actor_type: String) -> &mut ActorMetrics {
         let id_clone = id.clone();
-        self.actors.entry(id).or_insert_with(|| ActorMetrics::new_with_type(id_clone, actor_type))
+        self.actors
+            .entry(id)
+            .or_insert_with(|| ActorMetrics::new_with_type(id_clone, actor_type))
     }
 
     /// Record a message being processed
@@ -218,8 +225,14 @@ impl SupervisionData {
     /// Get summary statistics
     pub fn summary(&self) -> SupervisionSummary {
         let actors = self.actors.values().collect::<Vec<_>>();
-        let active_count = actors.iter().filter(|a| a.status == ActorStatus::Running).count();
-        let failed_count = actors.iter().filter(|a| a.status == ActorStatus::Failed).count();
+        let active_count = actors
+            .iter()
+            .filter(|a| a.status == ActorStatus::Running)
+            .count();
+        let failed_count = actors
+            .iter()
+            .filter(|a| a.status == ActorStatus::Failed)
+            .count();
 
         SupervisionSummary {
             total_actors: actors.len(),

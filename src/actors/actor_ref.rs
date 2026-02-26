@@ -35,6 +35,7 @@ const BLOCKING_ACTOR_NAME: &str = "Blocking Actor";
 ///      println!("Received message: {:?}", message.payload);
 ///  }
 /// }
+/// #[tokio::main]
 /// async fn main() {
 /// static THREAD_MONITOR: AtomicUsize = AtomicUsize::new(0);
 /// static SEND_MONITOR: AtomicUsize = AtomicUsize::new(0);
@@ -44,8 +45,7 @@ const BLOCKING_ACTOR_NAME: &str = "Blocking Actor";
 /// let actor = ActorImpl::new(None, SampleActor, _rx, None);
 /// let actor_ref = ActorRef::new(actor, tx, &SEND_MONITOR, &THREAD_MONITOR);
 /// let message = Message {payload: Some(ChatMessage::Hello { name: "Alice".to_string() }), stop: false, responder: None, blocking: None};
-/// actor_ref.send
-/// (message).await;
+/// actor_ref.send(message).await;
 /// }
 /// ```
 pub struct ActorRef<MType, Response>
@@ -199,7 +199,7 @@ mod tests {
             info!("Received message {:?}", message.payload.unwrap().message);
             match message.responder {
                 Some(responder) => {
-                    let _ = responder.send(ResponseMessage::Success);
+                    responder.handle(ResponseMessage::Success).await;
                 }
                 None => {
                     info!("No responder found");
@@ -234,6 +234,7 @@ mod tests {
         let sample = SampleActor;
         let (_tx, rx) = mpsc::channel::<Message<Payload, ResponseMessage>>(1);
         let (rs_tx, rs_rx) = tokio::sync::oneshot::channel::<ResponseMessage>();
+        let handler = super::super::response_handler::from_oneshot(rs_tx);
         let actor = ActorImpl::new(None, sample, rx, None);
         let _actor_ref = ActorRef::new::<SampleActor>(actor, _tx, &THREAD_MONITOR, &SEND_MONITOR);
         assert!(_actor_ref.sender.capacity() == 1);
@@ -243,7 +244,7 @@ mod tests {
         let message = Message {
             payload: Some(payload),
             stop: false,
-            responder: Some(rs_tx),
+            responder: Some(handler),
             blocking: None,
         };
         let _ = _actor_ref.send(message).await;

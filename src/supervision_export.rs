@@ -1,4 +1,4 @@
-use crate::supervision::{SupervisionData, ActorStatus};
+use crate::supervision::{ActorStatus, SupervisionData};
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -48,10 +48,7 @@ pub fn to_dot(supervision: &SupervisionData) -> String {
     for (id, metrics) in &supervision.actors {
         let label = format!(
             "{} ({})\\nStatus: {:?}\\nMessages: {}",
-            metrics.actor_type,
-            id,
-            metrics.status,
-            metrics.messages_processed
+            metrics.actor_type, id, metrics.status, metrics.messages_processed
         );
         let color = match metrics.status {
             ActorStatus::Running => "lightgreen",
@@ -138,12 +135,15 @@ pub fn to_mermaid_sequence(supervision: &SupervisionData) -> String {
     // Add participants
     for (id, metrics) in &supervision.actors {
         let safe_id = id.replace('-', "_");
-        sequence.push_str(&format!("    participant {} as {}({})\n", safe_id, metrics.actor_type, id));
+        sequence.push_str(&format!(
+            "    participant {} as {}({})\n",
+            safe_id, metrics.actor_type, id
+        ));
     }
 
     // Collect all message sending events with timestamps
     let mut events: Vec<(u64, String, String)> = Vec::new();
-    
+
     for (sender_id, metrics) in &supervision.actors {
         for event in &metrics.recent_events {
             if let crate::supervision::EventType::MessageSent { recipient_id } = &event.event_type {
@@ -181,7 +181,10 @@ pub fn to_text_summary(supervision: &SupervisionData) -> String {
     output.push_str(&format!("  Stopped: {}\n", summary.stopped_actors));
     output.push_str(&format!("  Failed: {}\n\n", summary.failed_actors));
     output.push_str("Messages:\n");
-    output.push_str(&format!("  Processed: {}\n", summary.total_messages_processed));
+    output.push_str(&format!(
+        "  Processed: {}\n",
+        summary.total_messages_processed
+    ));
     output.push_str(&format!("  Sent: {}\n\n", summary.total_messages_sent));
 
     output.push_str("Actor Details:\n");
@@ -189,7 +192,10 @@ pub fn to_text_summary(supervision: &SupervisionData) -> String {
         output.push_str(&format!("  {} ({})\n", id, metrics.actor_type));
         output.push_str(&format!("    Status: {:?}\n", metrics.status));
         output.push_str(&format!("    Uptime: {} ms\n", metrics.uptime_ms()));
-        output.push_str(&format!("    Messages Processed: {}\n", metrics.messages_processed));
+        output.push_str(&format!(
+            "    Messages Processed: {}\n",
+            metrics.messages_processed
+        ));
         output.push_str(&format!("    Messages Sent: {}\n", metrics.messages_sent));
     }
 
