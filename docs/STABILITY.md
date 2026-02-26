@@ -148,7 +148,7 @@ pub fn old_function() { ... }
 
 ## Minimum Supported Rust Version (MSRV)
 
-- Current MSRV: **Rust 1.77.0**
+- Current MSRV: **Rust 1.79.0**
 - MSRV increases require minor version bump (not patch)
 - We target stable Rust, not nightly features
 - MSRV will not increase more than once per minor version

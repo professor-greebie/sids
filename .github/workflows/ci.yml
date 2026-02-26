@@ -212,10 +212,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.77.0
+      - name: Install Rust 1.79.0
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.77.0"
+          toolchain: "1.79.0"
 
       - name: Cache cargo registry
         uses: actions/cache@v4
