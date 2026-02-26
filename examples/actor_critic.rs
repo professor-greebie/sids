@@ -366,7 +366,7 @@ impl Coordinator {
         .await
         .map_err(|e| format!("Failed to update actor: {:?}", e))?;
 
-        if episode.is_multiple_of(100) {
+        if episode % 100 == 0 {
             info!(
                 "Episode {}: Action={}, Reward={:.1}, Value={:.3}, TD_Error={:.3}",
                 episode, action, reward, value, td_error
