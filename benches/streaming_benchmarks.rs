@@ -1,11 +1,11 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use std::hint::black_box;
 
 use sids::actors::start_actor_system;
 use sids::streaming::flow::Flow;
 use sids::streaming::sink::Sink;
 use sids::streaming::source::Source;
 use sids::streaming::stream_message::{NotUsed, StreamMessage};
+use std::hint::black_box;
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 

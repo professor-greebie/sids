@@ -1,11 +1,11 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use std::hint::black_box;
 use sids::actors::{
     actor::Actor,
     get_response_handler,
     messages::{Message, ResponseMessage},
     send_message_by_id, spawn_actor, start_actor_system,
 };
+use std::hint::black_box;
 use tokio::runtime::Runtime;
 
 // Simple actor for benchmarking
