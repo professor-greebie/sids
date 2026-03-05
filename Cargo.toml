@@ -30,7 +30,7 @@ visualize = []
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports", "async_tokio"] }
-rand = "0.9"
+rand = "0.10"
 
 [[bench]]
 name = "actor_benchmarks"
