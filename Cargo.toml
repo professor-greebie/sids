@@ -16,11 +16,11 @@ license = "Apache-2.0"
 tokio = { version = "1", features = ["full"]}
 trait-variant = "0.1.2"
 log = {version = "0.4", features = ["kv"]}
-env_logger = "0.11.8"
+env_logger = "0.11.10"
 mockall = "0.14.0"
 reqwest = { version = "0.13", optional = true }
 serde = { version = "1", features = ["derive"] }
-toml = "1.0"
+toml = "1.1"
 serde_json = "1.0"
 async-trait = "0.1"
 
@@ -30,7 +30,7 @@ visualize = []
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports", "async_tokio"] }
-rand = "0.9"
+rand = "0.10"
 
 [[bench]]
 name = "actor_benchmarks"
