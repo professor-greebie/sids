@@ -21,8 +21,7 @@ use crate::supervision::{ActorMetrics, SupervisionData, SupervisionSummary};
 const GUARDIAN_ACTOR_NAME: &str = "GUARDIAN";
 const ACTOR_SYSTEM_NAME: &str = "Actor System";
 
-/// The Guardian is a special actor that manages the lifecycle of the actor system.
-/// It listens for shutdown signals and broadcasts them to all actors in the system.
+/// The Guardian is a special actor that listens for shutdown signals and broadcasts them to all actors.
 /// It also responds to pings to confirm that the system is alive.
 struct Guardian {
     shutdown_tx: Option<broadcast::Sender<()>>,
@@ -152,6 +151,7 @@ impl<MType: Send + Clone + 'static, Response: Send + Clone + 'static> ActorSyste
         Self::new_with_config(SidsConfig::default())
     }
 
+    /// Create a new ActorSystem with a custom configuration.
     pub(super) fn new_with_config(config: SidsConfig) -> Self {
         let actor_buffer_size = config.configuration.actor_buffer_size;
         let shutdown_timeout_ms = config.configuration.shutdown_timeout_ms;

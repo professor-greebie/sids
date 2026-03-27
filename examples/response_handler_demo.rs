@@ -1,6 +1,6 @@
-/// Example demonstrating memory-safe response handling with the ResponseHandler pattern
+/// Example: memory-safe response handling with the ResponseHandler pattern
 ///
-/// This example shows how the new ResponseHandler prevents memory leaks that could occur
+/// This example shows how ResponseHandler avoids memory buildup that could occur
 /// with raw oneshot channels when many messages are sent without awaiting responses.
 use sids::actors::{
     actor::Actor,
@@ -78,12 +78,12 @@ async fn run_demo() -> Result<(), Box<dyn std::error::Error>> {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     println!("Scenario 2: High-throughput without awaiting all responses");
-    println!("Sending 1000 messages with graceful error handling...");
+    println!("Sending 1000 messages with explicit error handling...");
     {
         let start_count = message_count.load(Ordering::SeqCst);
 
         // Send many messages without immediately awaiting
-        // This demonstrates that handlers clean up automatically
+        // Handlers clean up automatically
         for i in 0..1000 {
             let (handler, rx) = get_response_handler::<ResponseMessage>();
 
@@ -97,7 +97,7 @@ async fn run_demo() -> Result<(), Box<dyn std::error::Error>> {
             // Use ? operator - will exit early on first error
             send_message_by_id(&mut actor_system, 0, msg).await?;
 
-            // Purposely drop some receivers to simulate real-world scenarios
+            // Intentionally drop some receivers to simulate dropped consumers
             if i % 100 == 0 {
                 // Await every 100th response with error handling
                 if let Err(e) = rx.await {
@@ -162,12 +162,12 @@ async fn run_demo() -> Result<(), Box<dyn std::error::Error>> {
     // Arc and handler automatically cleaned up
 
     println!("=== Demo Complete ===");
-    println!("\nKey Benefits Demonstrated:");
+    println!("\nObserved behavior:");
     println!("1. Automatic cleanup when handlers are dropped");
     println!("2. No memory leaks even when receivers aren't awaited");
     println!("3. Efficient shared handling via Arc");
     println!("4. Safe for high-throughput scenarios");
-    println!("5. Proper error handling with Result types");
+    println!("5. Result-based error handling");
 
     let total = message_count.load(Ordering::SeqCst);
     println!("\nTotal messages processed: {}", total);

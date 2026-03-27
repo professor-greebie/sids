@@ -97,7 +97,7 @@ async fn example_http_source() {
         }
         Err(e) => {
             eprintln!("Failed to fetch from URL: {:?}", e);
-            info!("This is expected if there's no network connection");
+            info!("This may occur when network access is unavailable");
         }
     }
 }
@@ -315,7 +315,7 @@ async fn example_file_source() {
     use std::fs;
     let test_file_path = "test_data.txt";
     let test_content =
-        "Line 1: Hello from file!\nLine 2: Streaming rocks!\nLine 3: Actor model FTW!";
+        "Line 1: Hello from file!\nLine 2: Streaming pipeline example\nLine 3: Actor model example";
 
     match fs::write(test_file_path, test_content) {
         Ok(_) => {

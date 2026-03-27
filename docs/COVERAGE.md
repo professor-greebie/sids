@@ -163,7 +163,7 @@ Ensure you have write permissions to:
 
 ## Coverage Metrics
 
-The project currently has comprehensive test coverage:
+Current test coverage:
 
 - **Streaming module**: 36 tests
 - **Actor module**: 30 tests

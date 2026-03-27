@@ -147,8 +147,8 @@ impl Actor<ChatMessage, ResponseMessage> for Bob {
     }
 }
 
-/// implement the actor system and send some messages between Alice and Bob.
-/// Demonstrates proper error handling with Result types and the ? operator.
+/// Build the actor system and exchange messages between Alice and Bob.
+/// Uses `Result` and `?` for error propagation.
 async fn start_sample_actor_system() -> Result<(), Box<dyn std::error::Error>> {
     let mut actor_system = start_actor_system::<ChatMessage, ResponseMessage>();
     let thread_ref = actor_system.get_thread_count_reference();
@@ -185,7 +185,7 @@ async fn start_sample_actor_system() -> Result<(), Box<dyn std::error::Error>> {
     send_message_by_id(&mut actor_system, 0, goodbye).await?;
     send_message_by_id(&mut actor_system, 0, string_message).await?;
 
-    // Handle response with proper error handling
+    // Handle response explicitly
     let response = rx
         .await
         .map_err(|e| format!("Failed to receive response: {}", e))?;
@@ -200,7 +200,7 @@ async fn start_sample_actor_system() -> Result<(), Box<dyn std::error::Error>> {
 async fn main() {
     get_loggings();
 
-    // Demonstrate error handling at the top level
+    // Handle errors at the top level
     if let Err(e) = start_sample_actor_system().await {
         eprintln!("Error running chatbot example: {}", e);
         std::process::exit(1);

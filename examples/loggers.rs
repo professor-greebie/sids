@@ -128,7 +128,7 @@ async fn start_sample_actor_system() -> Result<(), Box<dyn std::error::Error>> {
     send_message_by_id(&mut actor_system, 2, message3).await?;
     send_message_by_id(&mut actor_system, 0, message4).await?;
 
-    // Demonstrate pattern matching on Results for different error cases
+    // Pattern match on Results for different error cases
     match rx.await {
         Ok(response) => info!("Response received from guardian: {:?}", response),
         Err(e) => info!("Guardian did not respond: {}", e),
@@ -146,7 +146,7 @@ async fn start_sample_actor_system() -> Result<(), Box<dyn std::error::Error>> {
 async fn main() {
     get_loggings();
 
-    // Demonstrate error handling at the top level
+    // Handle errors at the top level
     if let Err(e) = start_sample_actor_system().await {
         eprintln!("Error running loggers example: {}", e);
         std::process::exit(1);

@@ -1,12 +1,12 @@
-# SIDS - An Actor Model Approach to Data Collection in RUST
+# SIDS - Actor-Based Data Collection in Rust
 
 [![CI](https://github.com/professor-greebie/sids/actions/workflows/ci.yml/badge.svg)](https://github.com/professor-greebie/sids/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/sids.svg)](https://crates.io/crates/sids)
 [![Documentation](https://docs.rs/sids/badge.svg)](https://docs.rs/sids)
 [![License](https://img.shields.io/crates/l/sids.svg)](LICENSE.md)
 
-This is an experimental actor-model system library built in Rust. The repository has a few Mermaid diagrams
-and examples available for you to examine if you are interested in implementing the approach yourself.
+SIDS is an experimental actor-model library in Rust.
+It includes runnable examples and architecture notes so you can evaluate the model quickly.
 
 ## Getting Started
 
@@ -30,34 +30,31 @@ For an actor-critic machine learning example:
 cargo run --example actor_critic
 ```
 
-## What This Does
+## What You Get
 
-This project demonstrates a practical approach to building concurrent systems in Rust using:
+This project focuses on building concurrent systems in Rust with:
 
 - **Actor Model**: A message-passing architecture with isolated, concurrent actors
 - **Streaming Pipelines**: Functional reactive programming patterns for data processing
 
-The project allows for abstraction between Tokio-based asynchronous actors and blocking actors,
-providing a flexible foundation for concurrent application development.
+SIDS supports both Tokio-based async actors and blocking actors in the same system.
 
 ### Basic Concepts
 
 An actor implements an `Actor<MType, Response>` trait that includes a `receive` function accepting a
 message type of `Message<MType, Response>`.
 
-The `Message` struct covers the most common Actor behaviors (stop, responses etc.), but you can add
-more as part of the payload, which is of type MType.
+The `Message` struct covers common actor behaviors (stop, response handling, and payload transport).
 
-MType can be any base type (`String`, `u32` etc.) or an enum provided that it has Send features and
-can have static lifetime. Enums are powerful in Rust, so they are highly recommended. See the
+`MType` can be any type that is `Send + 'static` (for example, `String`, `u32`, or an enum).
+Enums are often a good fit for message protocols. See the
 [Rust documentation on enum types for more information](https://doc.rust-lang.org/book/ch06-00-enums.html)
 
-`Response` is any enum that actors use to send return messages back to the sender. A generic
+`Response` is any enum used for replies. A generic
 `ResponseMessage` can be used by default.
 
 Once you choose an `MType`, the `ActorSystem` uses the same message type throughout the system.
-Currently, only one `MType` is allowed; however, with Rust's enums, there is significant capacity
-for variance in message types.
+Currently, one `MType` is used per actor system.
 
 ```rust
 let mut actor_system = sids::actors::start_actor_system::<MType, Response>();
@@ -151,7 +148,7 @@ The streaming module provides a functional reactive programming (FRP) approach t
 cargo run --example source --features streaming
 ```
 
-This example demonstrates:
+This example includes:
 
 ```rust
 use sids::streaming::{Source, Flow, Sink, StreamMessage, NotUsed};
@@ -201,34 +198,32 @@ cargo build --features streaming
 cargo test --features streaming --lib
 ```
 
-### Actor-Critic Machine Learning Example
+### Actor-Critic Reinforcement Learning Example
 
 ```bash
 # Run the actor-critic reinforcement learning example
 cargo run --example actor_critic
 ```
 
-This example demonstrates a practical reinforcement learning system using the actor-critic pattern:
+This example builds a small actor-critic loop over a 3-armed bandit:
 
 - **Environment**: Multi-armed bandit with 3 arms (different reward probabilities)
 - **Actor Agent**: Learns which arm to pull (action policy)
 - **Critic Agent**: Evaluates expected rewards (value function)
 - **Coordinator**: Manages the training loop with message passing
 
-The example shows:
+The example includes:
 
 - Multiple coordinating actors working together
 - Request-response patterns using `get_response_handler`
 - Temporal difference (TD) learning with actor-critic updates
-- Real-world machine learning patterns in concurrent systems
+- An end-to-end training loop with message passing
 
-After 500 episodes, the actor learns to prefer the arm with the highest reward probability (50%),
-demonstrating how SIDS can be used for machine learning applications where actors coordinate to
-learn optimal policies.
+After 500 episodes, the actor typically shifts toward the arm with the highest reward probability (50%).
 
 ## Testing and Coverage
 
-The project includes comprehensive test coverage across all modules:
+Current test coverage across modules:
 
 - **Streaming module**: 36 tests
 - **Actor module**: 30 tests
@@ -313,13 +308,10 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - Code style requirements
 - Pull request process
 
-## The Future
+## Project Status
 
-From a prototype perspective, this is the final version of this project, except for performance and
-safety tweaks.
-
-The project includes advanced examples demonstrating real-world use cases, including actor-critic
-machine learning with reinforcement learning agents (see `examples/actor_critic.rs`).
+The project is in a stable prototype phase.
+Future changes are expected to focus on performance, safety, and maintenance improvements.
 
 ## Citations
 

@@ -4,7 +4,7 @@ use sids::actors::actor::Actor;
 use sids::actors::messages::Message;
 #[cfg(feature = "visualize")]
 use sids::actors::response_handler::from_oneshot;
-/// Example demonstrating the supervision system for monitoring and visualizing actors
+/// Example: supervision system for monitoring and visualizing actors
 ///
 /// This example shows how to:
 /// 1. Create actors and spawn them
@@ -184,7 +184,7 @@ async fn run_supervision_demo() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", to_text_summary(&supervision));
     println!();
 
-    // Export to JSON - demonstrate proper error handling
+    // Export to JSON with explicit error handling
     match to_json(&supervision) {
         Ok(json) => {
             println!("=== JSON Export ===");
@@ -214,9 +214,9 @@ async fn run_supervision_demo() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", sequence);
     println!("Paste the above into https://mermaid.live to visualize the message flow\n");
 
-    // Shutdown with proper error handling
+    // Shutdown with error handling
     actor_system.shutdown().await?;
-    println!("Actor system shut down gracefully.");
+    println!("Actor system shut down cleanly.");
 
     Ok(())
 }

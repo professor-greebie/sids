@@ -1,6 +1,6 @@
 # SIDS Architecture Documentation
 
-This directory contains comprehensive architecture documentation for SIDS v1.0.0.
+This directory contains architecture documentation for SIDS v1.0.0.
 
 ## Overview
 
