@@ -1,4 +1,4 @@
-/// Example demonstrating supervision tracking for streaming pipelines
+/// Example: supervision tracking for streaming pipelines
 ///
 /// This example shows how the supervision system monitors Source, Flow, and Sink actors
 /// in a streaming pipeline, providing visibility into data flow.
@@ -33,8 +33,8 @@ async fn main() {
     // Create a source with sample data strings
     let source = Source::from_items(vec![
         "hello world".to_string(),
-        "streaming is awesome".to_string(),
-        "rust actors rock".to_string(),
+        "streaming pipeline sample".to_string(),
+        "rust actor processing".to_string(),
     ]);
 
     // Create a flow that transforms text to uppercase

@@ -22,26 +22,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Actor-Critic Example**: New `examples/actor_critic.rs` demonstrating reinforcement learning
+- **Actor-Critic Example**: New `examples/actor_critic.rs` for reinforcement learning
   - Multi-armed bandit environment with 3 arms
   - Actor agent learning action policy with softmax selection
   - Critic agent learning value function estimates
   - Coordinator managing training episodes
-  - Shows real-world ML pattern with coordinating actors and TD learning
+  - Shows coordinating actors with TD learning
 
 ## [1.0.0] - 2026-02-26
 
 ### First Stable Release 🎉
 
-This release marks SIDS as production-ready with stable APIs and comprehensive documentation.
+This release marks the v1.0.0 stable API baseline with expanded documentation.
 
 ### Added
 
-- **API Stability Policy**: Comprehensive stability guarantees and semantic versioning commitments
+- **API Stability Policy**: Stability guarantees and semantic versioning commitments
   - `docs/STABILITY.md` - Complete API stability documentation
   - Stability markers in code documentation
   - Clear distinction between stable and experimental APIs
-- **Performance Benchmarks**: Comprehensive benchmark suite using Criterion
+- **Performance Benchmarks**: Benchmark suite using Criterion
   - Actor benchmarks: spawn, messaging, concurrency, response handlers, lookup
   - Streaming benchmarks: source creation, pipelines, transformations, operations
   - Benchmark documentation in CONTRIBUTING.md
@@ -82,8 +82,8 @@ For complete details, see [docs/STABILITY.md](docs/STABILITY.md).
   - `find_actor_by_name(&system, name)` - Find actor ID by name
   - `actor_exists(&system, id)` - Check if actor exists
 - Internal actor name tracking for all actors (not just with `visualize` feature)
-- Comprehensive tests for new actor management APIs
-- **CONTRIBUTING.md**: Comprehensive contributor guidelines including development setup, testing, code style, and PR process
+- Tests for new actor management APIs
+- **CONTRIBUTING.md**: Contributor guidelines including development setup, testing, code style, and PR process
 
 ### Removed
 
@@ -93,7 +93,7 @@ For complete details, see [docs/STABILITY.md](docs/STABILITY.md).
 
 ### Added
 
-- **Error handling system**: Comprehensive error types (`ActorError`, `ConfigError`)
+- **Error handling system**: Structured error types (`ActorError`, `ConfigError`)
 - `ActorResult<T>` and `ConfigResult<T>` type aliases for cleaner code
 - `ResponseHandler` trait pattern to replace raw oneshot senders
 - Proper error variants for all failure modes
@@ -174,7 +174,7 @@ send_message_by_id(&mut system, 0, msg)
 - Blocking actor support with dedicated thread pools
 - `spawn_blocking_actor()` function
 - Response channels for blocking actors
-- Examples demonstrating blocking actor patterns
+- Examples covering blocking actor patterns
 
 ### Fixed
 
@@ -200,7 +200,7 @@ send_message_by_id(&mut system, 0, msg)
 - Response handling with oneshot channels
 - Configuration loading from TOML files
 - Multiple examples (chatbot, loggers, supervision)
-- Comprehensive test suite
+- Test suite
 
 ### Changed
 

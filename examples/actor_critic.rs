@@ -1,14 +1,13 @@
 //! Actor-Critic Reinforcement Learning Example
 //!
-//! This example demonstrates an actor-critic system using SIDS actors:
+//! This example runs an actor-critic setup using SIDS actors:
 //! - Environment: Multi-armed bandit with 3 arms
 //! - Actor: Learns action policy (which arm to pull)
 //! - Critic: Learns value function (expected rewards)
 //! - Coordinator: Manages training loop
 //!
-//! The actor-critic pattern is a fundamental reinforcement learning architecture
-//! where the actor learns what actions to take, and the critic evaluates how good
-//! those actions are, providing feedback to improve the actor's policy.
+//! The actor selects actions and the critic estimates expected return,
+//! then both are updated from the temporal-difference error.
 
 use log::{info, warn};
 use sids::actors::{self, actor::Actor, get_response_handler, messages::Message, spawn_actor};
@@ -59,7 +58,7 @@ struct BanditEnvironment {
 impl BanditEnvironment {
     fn new() -> Self {
         Self {
-            arm_probs: vec![0.1, 0.5, 0.3], // Arm 1 (10%), Arm 2 (50% - best), Arm 3 (30%)
+            arm_probs: vec![0.1, 0.5, 0.3], // Arm 1 (10%), Arm 2 (50%), Arm 3 (30%)
             total_pulls: 0,
             total_reward: 0.0,
         }
@@ -492,9 +491,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     info!("\n=== Analysis ===");
-    info!("The actor should learn to prefer Arm 1 (50% reward rate)");
-    info!("Action values show learned preferences for each arm");
-    info!("Critic's value estimate approximates expected long-term reward");
+    info!("Expected outcome: the actor trends toward Arm 1 (50% reward rate)");
+    info!("Action values indicate relative arm preference");
+    info!("Critic value tracks observed average reward");
 
     Ok(())
 }

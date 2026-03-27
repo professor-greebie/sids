@@ -18,7 +18,7 @@ If you discover a security vulnerability in SIDS, please report it responsibly:
 **Please do NOT open a public issue.** Instead:
 
 1. **Email**: Send details to the maintainers (check GitHub profile for contact)
-2. **GitHub Security Advisory**: Use the [Security Advisory](https://github.com/professor-greebie/sids/security/advisories/new) feature
+2. **GitHub Security Advisory**: Use the [Security Advisory](https://github.com/professor-greebie/sids/security/advisories/new)
 
 ### What to Include
 
