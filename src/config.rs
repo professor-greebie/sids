@@ -32,7 +32,7 @@ impl Default for ActorSystemConfig {
 
 impl SidsConfig {
     /// Parses a TOML string into a `SidsConfig` instance. If parsing fails, an error is returned.
-    /// 
+    ///
     /// An example toml file can be found at `sids.config.example.toml` in the project root.
     pub fn from_toml_str(toml_str: &str) -> ConfigResult<Self> {
         toml::from_str(toml_str).map_err(|source| ConfigError::ParseError { source })
