@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-03-26
+
+### Security
+
+- Updated transitive dependencies to address RustSec advisories in TLS/QUIC stack:
+  - `aws-lc-sys` to `0.39.0`
+  - `quinn-proto` to `0.11.14`
+  - `rustls-webpki` to `0.103.10`
+
+### Fixed
+
+- Restored MSRV CI compatibility for Rust `1.83.0` by pinning `toml` to `1.0.4` and compatible transitive TOML crates.
+
 ### Added
 
 - **Actor-Critic Example**: New `examples/actor_critic.rs` demonstrating reinforcement learning
