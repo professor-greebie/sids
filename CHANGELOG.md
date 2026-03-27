@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-03-26
+
+### Security
+
+- Published a follow-up patch release from `main` containing the merged security and compatibility fixes from `1.0.2`.
+
 ## [1.0.2] - 2026-03-26
 
 ### Security
@@ -226,7 +232,8 @@ send_message_by_id(&mut system, 0, msg)
 - **0.5.0** (2025-11-15) - Core actor system, configuration
 - **0.4.0** (2025-10-01) - Initial release
 
-[Unreleased]: https://github.com/professor-greebie/sids/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/professor-greebie/sids/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/professor-greebie/sids/compare/v1.0.2...v1.0.3
 [0.7.0]: https://github.com/professor-greebie/sids/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/professor-greebie/sids/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/professor-greebie/sids/compare/v0.5.1...v0.5.2
